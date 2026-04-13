@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { BoardState, Piece, BOARD_SIZE } from '@/lib/engine/types';
-import { canPlacePiece } from '@/lib/engine/board';
+import { canPlacePiece, placePiece, findCompletedLines } from '@/lib/engine/board';
 
 type ClearAnimation = {
   rows: number[];
@@ -34,6 +34,8 @@ const GRID_LINE = '#2e2e50';
 const GHOST_VALID = 'rgba(68, 221, 136, 0.35)';
 const GHOST_INVALID = 'rgba(255, 68, 85, 0.35)';
 const CLEAR_FLASH = '#ffffff';
+const LINE_PREVIEW_COLOR = 'rgba(255, 204, 0, 0.15)';
+const LINE_PREVIEW_BORDER = 'rgba(255, 204, 0, 0.5)';
 const CELL_RADIUS = 3;
 const CLEAR_DURATION = 500;
 const POPUP_DURATION = 1000;
@@ -205,6 +207,65 @@ export default function GameBoard({
               CELL_RADIUS
             );
             ctx.fill();
+          }
+        }
+      }
+
+      // Draw line-completion preview (highlight rows/cols that will clear)
+      if (ghostPiece && ghostRow >= 0 && ghostCol >= 0) {
+        const isValid = canPlacePiece(board, ghostPiece, ghostRow, ghostCol);
+        if (isValid) {
+          // Simulate placement to find what lines would clear
+          const simBoard = placePiece(board, ghostPiece, ghostRow, ghostCol);
+          const { rows: previewRows, cols: previewCols } = findCompletedLines(simBoard);
+
+          if (previewRows.length > 0 || previewCols.length > 0) {
+            // Draw a glowing highlight over the rows/cols that will clear
+            const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+            const alpha = 0.1 + pulse * 0.12;
+
+            ctx.fillStyle = LINE_PREVIEW_COLOR;
+            ctx.globalAlpha = alpha + 0.1;
+
+            for (const r of previewRows) {
+              roundRect(ctx, padding, r * cellSize + padding, w - padding * 2, cellSize - padding * 2, 2);
+              ctx.fill();
+            }
+            for (const c of previewCols) {
+              roundRect(ctx, c * cellSize + padding, padding, cellSize - padding * 2, h - padding * 2, 2);
+              ctx.fill();
+            }
+
+            // Draw border lines on those rows/cols
+            ctx.strokeStyle = LINE_PREVIEW_BORDER;
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.4 + pulse * 0.3;
+
+            for (const r of previewRows) {
+              ctx.beginPath();
+              ctx.moveTo(0, r * cellSize);
+              ctx.lineTo(w, r * cellSize);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(0, (r + 1) * cellSize);
+              ctx.lineTo(w, (r + 1) * cellSize);
+              ctx.stroke();
+            }
+            for (const c of previewCols) {
+              ctx.beginPath();
+              ctx.moveTo(c * cellSize, 0);
+              ctx.lineTo(c * cellSize, h);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo((c + 1) * cellSize, 0);
+              ctx.lineTo((c + 1) * cellSize, h);
+              ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1;
+
+            // Need continuous animation for the pulse
+            rafRef.current = requestAnimationFrame(render);
           }
         }
       }

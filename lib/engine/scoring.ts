@@ -1,4 +1,14 @@
-export function calculateScore(
+// Points awarded per cell when placing a piece (no line clear needed)
+const BASE_POINTS_PER_CELL = 1;
+
+// Points awarded per cell cleared via line completion
+const CLEAR_POINTS_PER_CELL = 10;
+
+export function calculatePlacementScore(cellsPlaced: number): number {
+  return cellsPlaced * BASE_POINTS_PER_CELL;
+}
+
+export function calculateClearScore(
   cellsCleared: number,
   combo: number,
   streak: number
@@ -9,7 +19,7 @@ export function calculateScore(
 
   const comboMultiplier = Math.max(1, combo + 1);
   const streakMultiplier = Math.min(2, 1 + streak * 0.1);
-  const points = Math.round(cellsCleared * 10 * comboMultiplier * streakMultiplier);
+  const points = Math.round(cellsCleared * CLEAR_POINTS_PER_CELL * comboMultiplier * streakMultiplier);
 
   return {
     points,

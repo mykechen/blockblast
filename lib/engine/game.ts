@@ -1,7 +1,7 @@
 import { GameState, BOARD_SIZE } from './types';
 import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasValidPlacement } from './board';
-import { getRandomPieces } from './pieces';
-import { calculateScore } from './scoring';
+import { getSmartPieces, getRandomPieces } from './pieces';
+import { calculatePlacementScore, calculateClearScore } from './scoring';
 
 function loadHighScore(): number {
   if (typeof window === 'undefined') return 0;
@@ -23,9 +23,10 @@ function saveHighScore(score: number): void {
 }
 
 export function initGame(): GameState {
+  const board = createEmptyBoard();
   const pieces = getRandomPieces(3);
   return {
-    board: createEmptyBoard(),
+    board,
     currentPieces: pieces,
     score: 0,
     combo: 0,
@@ -37,6 +38,17 @@ export function initGame(): GameState {
     highestCombo: 0,
     highScore: loadHighScore(),
   };
+}
+
+// Count filled cells in a piece
+function countPieceCells(shape: boolean[][]): number {
+  let count = 0;
+  for (const row of shape) {
+    for (const cell of row) {
+      if (cell) count++;
+    }
+  }
+  return count;
 }
 
 export function handlePlacement(
@@ -52,6 +64,10 @@ export function handlePlacement(
   // Place the piece
   let newBoard = placePiece(state.board, piece, row, col);
 
+  // Base points for placing the piece (every placement scores)
+  const cellsPlaced = countPieceCells(piece.shape);
+  const placementPoints = calculatePlacementScore(cellsPlaced);
+
   // Check for completed lines
   const { rows, cols } = findCompletedLines(newBoard);
   const cellsCleared = rows.length * BOARD_SIZE + cols.length * BOARD_SIZE
@@ -62,8 +78,8 @@ export function handlePlacement(
     newBoard = clearLines(newBoard, rows, cols);
   }
 
-  // Calculate score
-  const { points, newCombo, newStreak } = calculateScore(
+  // Calculate clear bonus score
+  const { points: clearPoints, newCombo, newStreak } = calculateClearScore(
     cellsCleared,
     state.combo,
     cellsCleared > 0 ? state.streak : 0
@@ -77,32 +93,31 @@ export function handlePlacement(
   const newPieces = [...state.currentPieces];
   newPieces[pieceIndex] = null;
 
-  // Check if all pieces placed — deal new ones
+  // Check if all pieces placed — deal new ones (difficulty-scaled)
   const allPlaced = newPieces.every(p => p === null);
   let finalPieces = newPieces;
   let newTurnNumber = state.turnNumber;
   let finalCombo = newCombo;
   let finalStreak = newStreak;
 
+  const totalPoints = placementPoints + clearPoints;
+  const newScore = state.score + totalPoints;
+
   if (allPlaced) {
-    finalPieces = getRandomPieces(3);
+    finalPieces = getSmartPieces(3, newScore, newBoard);
     newTurnNumber = state.turnNumber + 1;
-    finalCombo = 0; // reset combo at start of new turn
-    // streak persists across turns if player cleared on last placement
+    finalCombo = 0;
     if (cellsCleared === 0) {
       finalStreak = 0;
     }
   }
 
-  const newScore = state.score + points;
   const highScore = Math.max(state.highScore, newScore);
 
-  // Save high score
   if (highScore > state.highScore) {
     saveHighScore(highScore);
   }
 
-  // Check game over
   const isGameOver = !hasValidPlacement(newBoard, finalPieces);
 
   return {
