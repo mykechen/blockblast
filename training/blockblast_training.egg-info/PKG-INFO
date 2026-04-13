@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: blockblast-training
+Version: 0.1.0
+Summary: Block Blast RL training environment
+Requires-Python: >=3.11
+Requires-Dist: numpy>=1.26
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"

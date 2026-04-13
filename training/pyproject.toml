@@ -1,0 +1,16 @@
+[project]
+name = "blockblast-training"
+version = "0.1.0"
+description = "Block Blast RL training environment"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
