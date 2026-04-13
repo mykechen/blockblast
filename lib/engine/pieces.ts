@@ -1,5 +1,5 @@
 import { Piece, BoardState, BOARD_SIZE } from './types';
-import { canPlacePiece } from './board';
+import { canPlacePiece, placePiece } from './board';
 
 // Color palette for pieces — vibrant, saturated, distinct
 const COLORS = {
@@ -109,7 +109,8 @@ function canFitPiece(board: BoardState, piece: Piece): boolean {
  * After selecting pieces, validates that all 3 can fit on the board.
  * If any can't fit, swaps it for the smallest piece that can.
  */
-export function getSmartPieces(count: number, score: number, board: BoardState): Piece[] {
+export function getSmartPieces(count: number, score: number, inputBoard: BoardState): Piece[] {
+  let board = inputBoard;
   const pieces: Piece[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -135,27 +136,44 @@ export function getSmartPieces(count: number, score: number, board: BoardState):
     pieces.push(clonePiece(pickRandom(pool)));
   }
 
-  // Solvability check: ensure every piece can fit on the board.
-  // If a piece can't fit, try smaller pieces from easy pool, then dot.
+  // Solvability check: verify each piece can fit, accounting for the
+  // space consumed by prior pieces in the set. We simulate placing each
+  // piece at its first valid position to check if subsequent pieces still fit.
+  const sortedBySize = [...PIECE_CATALOG].sort(
+    (a, b) => pieceCellCount(a) - pieceCellCount(b)
+  );
+
   for (let i = 0; i < pieces.length; i++) {
-    if (canFitPiece(board, pieces[i])) continue;
-
-    // Try to find a fitting piece, smallest first
-    const sortedBySize = [...PIECE_CATALOG].sort(
-      (a, b) => pieceCellCount(a) - pieceCellCount(b)
-    );
-
-    let replaced = false;
-    for (const candidate of sortedBySize) {
-      if (canFitPiece(board, candidate)) {
-        pieces[i] = clonePiece(candidate);
-        replaced = true;
-        break;
+    if (!canFitPiece(board, pieces[i])) {
+      // Swap for the smallest piece that fits
+      let replaced = false;
+      for (const candidate of sortedBySize) {
+        if (canFitPiece(board, candidate)) {
+          pieces[i] = clonePiece(candidate);
+          replaced = true;
+          break;
+        }
       }
+      // If nothing fits at all, game is truly over
+      if (!replaced) continue;
     }
 
-    // If absolutely nothing fits, the game is truly over — leave it
-    if (!replaced) break;
+    // Simulate placing this piece at its first valid spot to check
+    // whether remaining pieces can still fit on the resulting board
+    if (i < pieces.length - 1) {
+      let simBoard: BoardState | null = null;
+      for (let r = 0; r < BOARD_SIZE && !simBoard; r++) {
+        for (let c = 0; c < BOARD_SIZE && !simBoard; c++) {
+          if (canPlacePiece(board, pieces[i], r, c)) {
+            simBoard = placePiece(board, pieces[i], r, c);
+          }
+        }
+      }
+      if (simBoard) {
+        // Use the simulated board for checking the next piece
+        board = simBoard;
+      }
+    }
   }
 
   return pieces;

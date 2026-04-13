@@ -47,7 +47,7 @@ export function placePiece(
   col: number
 ): BoardState {
   // Clone board rows
-  const newBoard = board.map((row) => [...row]);
+  const newBoard = board.map(boardRow => [...boardRow]);
   const { shape } = piece;
 
   for (let r = 0; r < shape.length; r++) {
@@ -91,7 +91,7 @@ export function findCompletedLines(board: BoardState): { rows: number[]; cols: n
 // Returns NEW board with specified rows and cols cleared to false
 export function clearLines(board: BoardState, rows: number[], cols: number[]): BoardState {
   // Clone board
-  const newBoard = board.map((row) => [...row]);
+  const newBoard = board.map(boardRow => [...boardRow]);
 
   // Set cleared row cells to false
   for (const r of rows) {

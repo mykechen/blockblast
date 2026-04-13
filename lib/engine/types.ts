@@ -25,12 +25,4 @@ export type GameState = {
   highScore: number;
 };
 
-export type PlacementResult = {
-  newBoard: BoardState;
-  clearedRows: number[];
-  clearedCols: number[];
-  pointsEarned: number;
-  newCombo: number;
-};
-
 export const BOARD_SIZE = 8;
