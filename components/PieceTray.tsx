@@ -9,6 +9,7 @@ type PieceTrayProps = {
   onDragMove: (clientX: number, clientY: number) => void;
   onDragEnd: (clientX: number, clientY: number) => void;
   draggingIndex: number | null;
+  onPointerType?: (isTouch: boolean) => void;
 };
 
 const TRAY_CELL_SIZE = 28;
@@ -21,7 +22,7 @@ function PiecePreview({
 }: {
   piece: Piece;
   index: number;
-  onDragStart: (pieceIndex: number, offsetX: number, offsetY: number) => void;
+  onDragStart: (pieceIndex: number, offsetX: number, offsetY: number, isTouch: boolean) => void;
   isDragging: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -36,7 +37,8 @@ function PiecePreview({
       const pieceH = piece.shape.length * TRAY_CELL_SIZE;
       const offsetX = e.clientX - rect.left - pieceW / 2;
       const offsetY = e.clientY - rect.top - pieceH / 2;
-      onDragStart(index, offsetX, offsetY);
+      const isTouch = e.pointerType === 'touch';
+      onDragStart(index, offsetX, offsetY, isTouch);
     },
     [piece, index, onDragStart]
   );
@@ -87,6 +89,7 @@ export default function PieceTray({
   onDragMove,
   onDragEnd,
   draggingIndex,
+  onPointerType,
 }: PieceTrayProps) {
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
@@ -107,12 +110,13 @@ export default function PieceTray({
   );
 
   const wrappedDragStart = useCallback(
-    (pieceIndex: number, offsetX: number, offsetY: number) => {
+    (pieceIndex: number, offsetX: number, offsetY: number, isTouch: boolean) => {
+      onPointerType?.(isTouch);
       onDragStart(pieceIndex, offsetX, offsetY);
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
     },
-    [onDragStart, handlePointerMove, handlePointerUp]
+    [onDragStart, handlePointerMove, handlePointerUp, onPointerType]
   );
 
   return (

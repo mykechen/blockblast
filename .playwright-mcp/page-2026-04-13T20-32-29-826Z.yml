@@ -1,0 +1,20 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: Score
+          - generic [ref=e8]: "4"
+        - generic [ref=e9]:
+          - generic [ref=e10]: Best
+          - generic [ref=e11]: 2,023
+      - button "New Game" [active] [ref=e40] [cursor=pointer]
+      - generic [ref=e53]:
+        - heading "New Game?" [level=3] [ref=e54]
+        - paragraph [ref=e55]: Your current progress will be lost.
+        - generic [ref=e56]:
+          - button "Cancel" [ref=e57] [cursor=pointer]
+          - button "Restart" [ref=e58] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e46] [cursor=pointer]:
+    - img [ref=e47]
+  - alert [ref=e50]

@@ -18,6 +18,18 @@ type ComboPopup = {
   color: string;
 };
 
+export type Particle = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  life: number; // 0-1, decreases over time
+  startTime: number;
+  duration: number;
+};
+
 type GameBoardProps = {
   board: BoardState;
   boardColors: (string | null)[][];
@@ -26,6 +38,7 @@ type GameBoardProps = {
   ghostCol: number;
   clearAnimation: ClearAnimation | null;
   comboPopups: ComboPopup[];
+  particles: Particle[];
   onBoardLayout: (rect: DOMRect, cellSize: number) => void;
 };
 
@@ -46,6 +59,7 @@ export default function GameBoard({
   ghostCol,
   clearAnimation,
   comboPopups,
+  particles,
   onBoardLayout,
 }: GameBoardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -284,9 +298,25 @@ export default function GameBoard({
         ctx.globalAlpha = 1;
       }
 
+      // Draw particles
+      for (const p of particles) {
+        const elapsed = now - p.startTime;
+        if (elapsed > p.duration) continue;
+        const life = 1 - elapsed / p.duration;
+        const x = p.x + p.vx * (elapsed / 1000);
+        const y = p.y + p.vy * (elapsed / 1000) + 0.5 * 120 * (elapsed / 1000) ** 2; // gravity
+        ctx.globalAlpha = life * 0.8;
+        ctx.fillStyle = p.color;
+        const size = p.size * (0.5 + life * 0.5);
+        roundRect(ctx, x - size / 2, y - size / 2, size, size, 1);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
       const needsAnimation =
         clearAnimation !== null ||
-        comboPopups.some(p => now - p.startTime < POPUP_DURATION);
+        comboPopups.some(p => now - p.startTime < POPUP_DURATION) ||
+        particles.some(p => now - p.startTime < p.duration);
 
       if (needsAnimation) {
         rafRef.current = requestAnimationFrame(render);
@@ -300,7 +330,7 @@ export default function GameBoard({
       animating = false;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [board, boardColors, ghostPiece, ghostRow, ghostCol, clearAnimation, comboPopups, canvasReady]);
+  }, [board, boardColors, ghostPiece, ghostRow, ghostCol, clearAnimation, comboPopups, particles, canvasReady]);
 
   return (
     <div
