@@ -18,7 +18,7 @@ function saveHighScore(score: number): void {
   try {
     localStorage.setItem('blockblast-highscore', String(score));
   } catch {
-    // silently fail if localStorage unavailable
+    // silently fail
   }
 }
 
@@ -30,14 +30,12 @@ export function initGame(): GameState {
     currentPieces: pieces,
     score: 0,
     combo: 0,
-    streak: 0,
+    placementsSinceLastClear: 0,
     isGameOver: false,
     turnNumber: 1,
     totalLinesCleared: 0,
-    longestStreak: 0,
     highestCombo: 0,
     highScore: loadHighScore(),
-    clearedThisTurn: false,
   };
 }
 
@@ -61,7 +59,6 @@ export function handlePlacement(
   if (!piece) return null;
   if (!canPlacePiece(state.board, piece, row, col)) return null;
 
-  // Place the piece
   let newBoard = placePiece(state.board, piece, row, col);
 
   // Base points for placing the piece
@@ -72,56 +69,58 @@ export function handlePlacement(
   const { rows, cols } = findCompletedLines(newBoard);
   const linesCleared = rows.length + cols.length;
   const cellsCleared = rows.length * BOARD_SIZE + cols.length * BOARD_SIZE
-    - rows.length * cols.length; // subtract intersections
+    - rows.length * cols.length;
 
-  // Clear lines
   if (linesCleared > 0) {
     newBoard = clearLines(newBoard, rows, cols);
   }
 
-  // Calculate clear bonus (uses current combo for multiplier)
+  // Combo logic:
+  // - Clear a line → combo increments, placement counter resets
+  // - No clear → placement counter increments
+  // - 3 placements without a clear → combo resets to 0
+  let newCombo = state.combo;
+  let newPlacementsSinceLastClear = state.placementsSinceLastClear;
+
+  if (linesCleared > 0) {
+    // Line cleared: increment combo, reset placement counter
+    newCombo = state.combo + 1;
+    newPlacementsSinceLastClear = 0;
+  } else {
+    // No clear: increment placement counter
+    newPlacementsSinceLastClear = state.placementsSinceLastClear + 1;
+    if (newPlacementsSinceLastClear >= 3) {
+      // 3 placements without a clear — combo expires
+      newCombo = 0;
+      newPlacementsSinceLastClear = 0;
+    }
+  }
+
+  // Calculate clear bonus using the combo BEFORE this clear incremented it
+  // (so the first clear in a combo uses multiplier 1x, second uses 2x, etc.)
   const clearPoints = calculateClearScore(linesCleared, cellsCleared, state.combo);
 
-  // Track if we cleared any line this turn
-  const clearedThisTurn = state.clearedThisTurn || linesCleared > 0;
-
   const totalLinesCleared = state.totalLinesCleared + linesCleared;
+  const highestCombo = Math.max(state.highestCombo, newCombo);
 
   // Remove piece from tray
   const newPieces = [...state.currentPieces];
   newPieces[pieceIndex] = null;
 
-  // Check if all 3 pieces have been placed — deal new set
+  // Deal new pieces if all 3 placed
   const allPlaced = newPieces.every(p => p === null);
   let finalPieces = newPieces;
   let newTurnNumber = state.turnNumber;
-  let newCombo = state.combo;
-  let newClearedThisTurn = clearedThisTurn;
 
   const totalPoints = placementPoints + clearPoints;
   const newScore = state.score + totalPoints;
 
   if (allPlaced) {
-    // End of turn: update combo based on whether we cleared any line this turn
-    if (clearedThisTurn) {
-      // Cleared at least one line this turn — combo continues
-      newCombo = state.combo + 1;
-    } else {
-      // No clears this turn — combo resets
-      newCombo = 0;
-    }
-
     finalPieces = getSmartPieces(3, newScore, newBoard);
     newTurnNumber = state.turnNumber + 1;
-    newClearedThisTurn = false; // reset for new turn
   }
 
-  const highestCombo = Math.max(state.highestCombo, newCombo);
-  // Streak = same as combo for display purposes
-  const streak = newCombo;
-  const longestStreak = Math.max(state.longestStreak, streak);
   const highScore = Math.max(state.highScore, newScore);
-
   if (highScore > state.highScore) {
     saveHighScore(highScore);
   }
@@ -133,13 +132,11 @@ export function handlePlacement(
     currentPieces: finalPieces,
     score: newScore,
     combo: newCombo,
-    streak,
+    placementsSinceLastClear: newPlacementsSinceLastClear,
     isGameOver,
     turnNumber: newTurnNumber,
     totalLinesCleared,
-    longestStreak,
     highestCombo,
     highScore,
-    clearedThisTurn: newClearedThisTurn,
   };
 }

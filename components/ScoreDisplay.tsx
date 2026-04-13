@@ -6,7 +6,6 @@ type ScoreDisplayProps = {
   score: number;
   highScore: number;
   combo: number;
-  streak: number;
 };
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -39,7 +38,7 @@ function AnimatedNumber({ value }: { value: number }) {
   return <span>{display.toLocaleString()}</span>;
 }
 
-export default function ScoreDisplay({ score, highScore, combo, streak }: ScoreDisplayProps) {
+export default function ScoreDisplay({ score, highScore, combo }: ScoreDisplayProps) {
   return (
     <div className="flex items-center justify-between w-full max-w-[480px] px-4 py-2">
       <div className="flex flex-col items-start">
@@ -62,18 +61,6 @@ export default function ScoreDisplay({ score, highScore, combo, streak }: ScoreD
             }}
           >
             {combo}x COMBO
-          </div>
-        )}
-        {streak > 1 && (
-          <div
-            className="px-2 py-1 rounded text-sm font-bold"
-            style={{
-              animation: 'popIn 0.3s ease-out',
-              background: 'rgba(68, 221, 136, 0.2)',
-              color: '#44dd88',
-            }}
-          >
-            {streak} STREAK
           </div>
         )}
       </div>

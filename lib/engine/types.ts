@@ -16,15 +16,13 @@ export type GameState = {
   currentPieces: (Piece | null)[];
   score: number;
   combo: number;
-  streak: number;
+  // How many placements since the last line clear (combo expires at 3)
+  placementsSinceLastClear: number;
   isGameOver: boolean;
   turnNumber: number;
   totalLinesCleared: number;
-  longestStreak: number;
   highestCombo: number;
   highScore: number;
-  // Tracks whether any line was cleared during the current set of 3 pieces
-  clearedThisTurn: boolean;
 };
 
 export type PlacementResult = {
@@ -33,7 +31,6 @@ export type PlacementResult = {
   clearedCols: number[];
   pointsEarned: number;
   newCombo: number;
-  newStreak: number;
 };
 
 export const BOARD_SIZE = 8;

@@ -268,7 +268,6 @@ export default function BlockBlastGame() {
         score={game.score}
         highScore={game.highScore}
         combo={game.combo}
-        streak={game.streak}
       />
 
       <GameBoard
@@ -332,7 +331,6 @@ export default function BlockBlastGame() {
           score={game.score}
           highScore={game.highScore}
           totalLinesCleared={game.totalLinesCleared}
-          longestStreak={game.longestStreak}
           highestCombo={game.highestCombo}
           onRestart={handleRestart}
         />

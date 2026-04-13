@@ -4,7 +4,6 @@ type GameOverOverlayProps = {
   score: number;
   highScore: number;
   totalLinesCleared: number;
-  longestStreak: number;
   highestCombo: number;
   onRestart: () => void;
 };
@@ -13,7 +12,6 @@ export default function GameOverOverlay({
   score,
   highScore,
   totalLinesCleared,
-  longestStreak,
   highestCombo,
   onRestart,
 }: GameOverOverlayProps) {
@@ -50,18 +48,12 @@ export default function GameOverOverlay({
           {score.toLocaleString()}
         </div>
 
-        <div className="w-full grid grid-cols-3 gap-3 text-center">
+        <div className="w-full grid grid-cols-2 gap-3 text-center">
           <div className="flex flex-col">
             <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              Lines
+              Lines Cleared
             </span>
             <span className="text-lg font-semibold tabular-nums">{totalLinesCleared}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              Best Streak
-            </span>
-            <span className="text-lg font-semibold tabular-nums">{longestStreak}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
