@@ -23,6 +23,8 @@ export type GameState = {
   longestStreak: number;
   highestCombo: number;
   highScore: number;
+  // Tracks whether any line was cleared during the current set of 3 pieces
+  clearedThisTurn: boolean;
 };
 
 export type PlacementResult = {

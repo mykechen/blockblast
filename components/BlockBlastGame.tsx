@@ -176,25 +176,56 @@ export default function BlockBlastGame() {
 
             setTimeout(() => setClearAnimation(null), 500);
 
-            // Add combo popup
+            // Add popup for line clear / combo
+            const cellSize = cellSizeRef.current;
+            const centerX = (BOARD_SIZE * cellSize) / 2;
+            const centerY = (BOARD_SIZE * cellSize) / 2;
+            const linesCount = clearedRows.length + clearedCols.length;
+
+            // Show combo multiplier if active
             if (newState.combo > 0) {
-              const cellSize = cellSizeRef.current;
-              const centerX = (BOARD_SIZE * cellSize) / 2;
-              const centerY = (BOARD_SIZE * cellSize) / 2;
               setComboPopups(prev => [
                 ...prev,
                 {
-                  text: `${newState.combo}x COMBO!`,
+                  text: `${newState.combo + 1}x COMBO!`,
                   x: centerX,
-                  y: centerY,
+                  y: centerY - 20,
                   startTime: performance.now(),
                   color: '#ff8800',
                 },
               ]);
-              setTimeout(() => {
-                setComboPopups(prev => prev.filter(p => performance.now() - p.startTime < 1000));
-              }, 1100);
+            } else if (linesCount >= 2) {
+              // Multi-line clear without combo
+              setComboPopups(prev => [
+                ...prev,
+                {
+                  text: `${linesCount} LINES!`,
+                  x: centerX,
+                  y: centerY - 20,
+                  startTime: performance.now(),
+                  color: '#44dd88',
+                },
+              ]);
             }
+
+            // Show points earned
+            const pointsEarned = newState.score - (gameRef.current?.score ?? 0);
+            if (pointsEarned > 10) {
+              setComboPopups(prev => [
+                ...prev,
+                {
+                  text: `+${pointsEarned}`,
+                  x: centerX,
+                  y: centerY + 15,
+                  startTime: performance.now(),
+                  color: '#ffffff',
+                },
+              ]);
+            }
+
+            setTimeout(() => {
+              setComboPopups(prev => prev.filter(p => performance.now() - p.startTime < 1000));
+            }, 1100);
           }
 
           setBoardColors(newColors);

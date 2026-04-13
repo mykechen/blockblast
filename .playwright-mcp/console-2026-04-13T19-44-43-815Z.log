@@ -8,3 +8,167 @@
 [   36941ms] [LOG] [Fast Refresh] done in 13ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [   46348ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [   46377ms] [LOG] [Fast Refresh] done in 17ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  330892ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-client] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  330893ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-ssr] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  330973ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-client] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  330973ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-ssr] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  331018ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  363355ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-client] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  363355ms] [ERROR] ./lib/engine/game.ts:4:1
+Export calculateScore doesn't exist in target module
+  2 | import { createEmptyBoard, canPlacePiece, placePiece, findCompletedLines, clearLines, hasVa...
+  3 | import { getRandomPieces } from './pieces';
+> 4 | import { calculateScore } from './scoring';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 |
+  6 | function loadHighScore(): number {
+  7 |   if (typeof window === 'undefined') return 0;
+
+The export calculateScore was not found in module [project]/lib/engine/scoring.ts [app-ssr] (ecmascript).
+Did you mean to import calculateClearScore?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./lib/engine/game.ts [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Client Component Browser]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/engine/game.ts [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Client Component SSR]
+    ./components/BlockBlastGame.tsx [Server Component]
+    ./app/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  363390ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  385192ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  385258ms] [LOG] [Fast Refresh] done in 19ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  400695ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  400722ms] [LOG] [Fast Refresh] done in 13ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  415934ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  415962ms] [LOG] [Fast Refresh] done in 20ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431

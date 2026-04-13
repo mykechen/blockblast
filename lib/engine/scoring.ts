@@ -1,4 +1,4 @@
-// Points awarded per cell when placing a piece (no line clear needed)
+// Points awarded per cell when placing a piece (every placement scores)
 const BASE_POINTS_PER_CELL = 1;
 
 // Points awarded per cell cleared via line completion
@@ -8,22 +8,34 @@ export function calculatePlacementScore(cellsPlaced: number): number {
   return cellsPlaced * BASE_POINTS_PER_CELL;
 }
 
+/**
+ * Combo scoring for line clears.
+ *
+ * Combo rules (matching Block Blast):
+ * - Combo tracks consecutive turns where you clear at least one line
+ * - A "turn" = one set of 3 pieces
+ * - If you clear any line during a turn, the combo continues to the next turn
+ * - If a full turn passes with no clears, combo resets to 0
+ * - Combo multiplier: combo 0 = 1x, combo 1 = 2x, combo 2 = 3x, etc.
+ *
+ * @param linesCleared - number of lines (rows + cols) cleared in this placement
+ * @param combo - current combo counter (number of consecutive turns with clears)
+ */
 export function calculateClearScore(
+  linesCleared: number,
   cellsCleared: number,
-  combo: number,
-  streak: number
-): { points: number; newCombo: number; newStreak: number } {
-  if (cellsCleared === 0) {
-    return { points: 0, newCombo: 0, newStreak: streak };
-  }
+  combo: number
+): number {
+  if (cellsCleared === 0) return 0;
 
-  const comboMultiplier = Math.max(1, combo + 1);
-  const streakMultiplier = Math.min(2, 1 + streak * 0.1);
-  const points = Math.round(cellsCleared * CLEAR_POINTS_PER_CELL * comboMultiplier * streakMultiplier);
+  // Base: 10 points per cell cleared
+  const basePoints = cellsCleared * CLEAR_POINTS_PER_CELL;
 
-  return {
-    points,
-    newCombo: combo + 1,
-    newStreak: streak + 1,
-  };
+  // Multi-line bonus: clearing 2+ lines at once gives extra
+  const lineBonusMultiplier = linesCleared >= 2 ? 1 + (linesCleared - 1) * 0.5 : 1;
+
+  // Combo multiplier: each consecutive turn with clears adds 1x
+  const comboMultiplier = 1 + combo;
+
+  return Math.round(basePoints * lineBonusMultiplier * comboMultiplier);
 }

@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: Score
+        - generic [ref=e7]: "0"
+      - generic [ref=e8]:
+        - generic [ref=e9]: Best
+        - generic [ref=e10]: 2,023
+  - button "Open Next.js Dev Tools" [ref=e42] [cursor=pointer]:
+    - img [ref=e43]
+  - alert [ref=e46]

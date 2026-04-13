@@ -37,10 +37,10 @@ export function initGame(): GameState {
     longestStreak: 0,
     highestCombo: 0,
     highScore: loadHighScore(),
+    clearedThisTurn: false,
   };
 }
 
-// Count filled cells in a piece
 function countPieceCells(shape: boolean[][]): number {
   let count = 0;
   for (const row of shape) {
@@ -64,54 +64,62 @@ export function handlePlacement(
   // Place the piece
   let newBoard = placePiece(state.board, piece, row, col);
 
-  // Base points for placing the piece (every placement scores)
+  // Base points for placing the piece
   const cellsPlaced = countPieceCells(piece.shape);
   const placementPoints = calculatePlacementScore(cellsPlaced);
 
   // Check for completed lines
   const { rows, cols } = findCompletedLines(newBoard);
+  const linesCleared = rows.length + cols.length;
   const cellsCleared = rows.length * BOARD_SIZE + cols.length * BOARD_SIZE
-    - rows.length * cols.length; // subtract intersections counted twice
+    - rows.length * cols.length; // subtract intersections
 
   // Clear lines
-  if (rows.length > 0 || cols.length > 0) {
+  if (linesCleared > 0) {
     newBoard = clearLines(newBoard, rows, cols);
   }
 
-  // Calculate clear bonus score
-  const { points: clearPoints, newCombo, newStreak } = calculateClearScore(
-    cellsCleared,
-    state.combo,
-    cellsCleared > 0 ? state.streak : 0
-  );
+  // Calculate clear bonus (uses current combo for multiplier)
+  const clearPoints = calculateClearScore(linesCleared, cellsCleared, state.combo);
 
-  const totalLinesCleared = state.totalLinesCleared + rows.length + cols.length;
-  const longestStreak = Math.max(state.longestStreak, newStreak);
-  const highestCombo = Math.max(state.highestCombo, newCombo);
+  // Track if we cleared any line this turn
+  const clearedThisTurn = state.clearedThisTurn || linesCleared > 0;
+
+  const totalLinesCleared = state.totalLinesCleared + linesCleared;
 
   // Remove piece from tray
   const newPieces = [...state.currentPieces];
   newPieces[pieceIndex] = null;
 
-  // Check if all pieces placed — deal new ones (difficulty-scaled)
+  // Check if all 3 pieces have been placed — deal new set
   const allPlaced = newPieces.every(p => p === null);
   let finalPieces = newPieces;
   let newTurnNumber = state.turnNumber;
-  let finalCombo = newCombo;
-  let finalStreak = newStreak;
+  let newCombo = state.combo;
+  let newClearedThisTurn = clearedThisTurn;
 
   const totalPoints = placementPoints + clearPoints;
   const newScore = state.score + totalPoints;
 
   if (allPlaced) {
+    // End of turn: update combo based on whether we cleared any line this turn
+    if (clearedThisTurn) {
+      // Cleared at least one line this turn — combo continues
+      newCombo = state.combo + 1;
+    } else {
+      // No clears this turn — combo resets
+      newCombo = 0;
+    }
+
     finalPieces = getSmartPieces(3, newScore, newBoard);
     newTurnNumber = state.turnNumber + 1;
-    finalCombo = 0;
-    if (cellsCleared === 0) {
-      finalStreak = 0;
-    }
+    newClearedThisTurn = false; // reset for new turn
   }
 
+  const highestCombo = Math.max(state.highestCombo, newCombo);
+  // Streak = same as combo for display purposes
+  const streak = newCombo;
+  const longestStreak = Math.max(state.longestStreak, streak);
   const highScore = Math.max(state.highScore, newScore);
 
   if (highScore > state.highScore) {
@@ -124,13 +132,14 @@ export function handlePlacement(
     board: newBoard,
     currentPieces: finalPieces,
     score: newScore,
-    combo: cellsCleared > 0 ? finalCombo : 0,
-    streak: cellsCleared > 0 ? finalStreak : 0,
+    combo: newCombo,
+    streak,
     isGameOver,
     turnNumber: newTurnNumber,
     totalLinesCleared,
     longestStreak,
     highestCombo,
     highScore,
+    clearedThisTurn: newClearedThisTurn,
   };
 }
