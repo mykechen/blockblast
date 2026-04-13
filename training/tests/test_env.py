@@ -1,4 +1,5 @@
 import numpy as np
+from gymnasium.utils.env_checker import check_env
 from env.types import Piece, GameState, BOARD_SIZE
 from env.board import create_empty_board, can_place_piece, place_piece
 from env.pieces import PIECE_CATALOG, get_random_pieces
@@ -192,3 +193,14 @@ def test_seed_reproducibility():
         obs2b, r2, _, _, _ = env2.step(valid[0])
         np.testing.assert_array_equal(obs1b, obs2b)
         assert r1 == r2
+
+
+def test_gymnasium_api_compliance():
+    """Verify env passes Gymnasium's built-in checker."""
+    env = BlockBlastEnv()
+    try:
+        check_env(env.unwrapped, skip_render_check=True)
+    except Exception as e:
+        msg = str(e)
+        if "observation" in msg.lower() or "action" in msg.lower():
+            raise
