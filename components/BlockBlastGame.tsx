@@ -43,6 +43,16 @@ export default function BlockBlastGame() {
   const cellSizeRef = useRef(0);
   const dragOverlayRef = useRef<HTMLDivElement>(null);
 
+  // Refs to avoid stale closures in window event handlers
+  const dragStateRef = useRef<DragState | null>(null);
+  const gameRef = useRef<GameState | null>(null);
+  const boardColorsRef = useRef(boardColors);
+
+  // Keep refs in sync with state
+  dragStateRef.current = dragState;
+  gameRef.current = game;
+  boardColorsRef.current = boardColors;
+
   // Initialize game on mount (client-side only)
   useEffect(() => {
     setGame(initGame());
@@ -79,7 +89,9 @@ export default function BlockBlastGame() {
       if (!game || game.isGameOver) return;
       const piece = game.currentPieces[pieceIndex];
       if (!piece) return;
-      setDragState({ pieceIndex, piece, clientX: 0, clientY: 0 });
+      const newDrag = { pieceIndex, piece, clientX: 0, clientY: 0 };
+      dragStateRef.current = newDrag;
+      setDragState(newDrag);
     },
     [game]
   );
@@ -88,7 +100,9 @@ export default function BlockBlastGame() {
     (clientX: number, clientY: number) => {
       setDragState(prev => {
         if (!prev) return prev;
-        return { ...prev, clientX, clientY };
+        const updated = { ...prev, clientX, clientY };
+        dragStateRef.current = updated;
+        return updated;
       });
 
       // Update floating piece overlay position
@@ -102,23 +116,27 @@ export default function BlockBlastGame() {
 
   const handleDragEnd = useCallback(
     (clientX: number, clientY: number) => {
-      if (!dragState || !game) {
+      const currentDrag = dragStateRef.current;
+      const currentGame = gameRef.current;
+      const currentColors = boardColorsRef.current;
+
+      if (!currentDrag || !currentGame) {
+        dragStateRef.current = null;
         setDragState(null);
         return;
       }
 
-      const { row, col } = clientToGrid(clientX, clientY, dragState.piece);
-
-      if (canPlacePiece(game.board, dragState.piece, row, col)) {
-        const newState = handlePlacement(game, dragState.pieceIndex, row, col);
+      const { row, col } = clientToGrid(clientX, clientY, currentDrag.piece);
+      if (canPlacePiece(currentGame.board, currentDrag.piece, row, col)) {
+        const newState = handlePlacement(currentGame, currentDrag.pieceIndex, row, col);
 
         if (newState) {
           // Update board colors — keep existing colors, add new piece color
-          const newColors = boardColors.map(r => [...r]);
-          for (let r = 0; r < dragState.piece.shape.length; r++) {
-            for (let c = 0; c < dragState.piece.shape[r].length; c++) {
-              if (dragState.piece.shape[r][c]) {
-                newColors[row + r][col + c] = dragState.piece.color;
+          const newColors = currentColors.map(r => [...r]);
+          for (let r = 0; r < currentDrag.piece.shape.length; r++) {
+            for (let c = 0; c < currentDrag.piece.shape[r].length; c++) {
+              if (currentDrag.piece.shape[r][c]) {
+                newColors[row + r][col + c] = currentDrag.piece.color;
               }
             }
           }
@@ -184,9 +202,10 @@ export default function BlockBlastGame() {
         }
       }
 
+      dragStateRef.current = null;
       setDragState(null);
     },
-    [dragState, game, boardColors, clientToGrid]
+    [clientToGrid]
   );
 
   const handleRestart = useCallback(() => {

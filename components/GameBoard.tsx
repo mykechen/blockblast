@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { BoardState, Piece, BOARD_SIZE } from '@/lib/engine/types';
 import { canPlacePiece } from '@/lib/engine/board';
 
@@ -30,7 +30,7 @@ type GameBoardProps = {
 };
 
 const BG_BOARD = '#1a1a2e';
-const GRID_LINE = '#2a2a3e';
+const GRID_LINE = '#2e2e50';
 const GHOST_VALID = 'rgba(68, 221, 136, 0.35)';
 const GHOST_INVALID = 'rgba(255, 68, 85, 0.35)';
 const CLEAR_FLASH = '#ffffff';
@@ -52,12 +52,7 @@ export default function GameBoard({
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
   const dprRef = useRef(1);
-
-  const getCellSize = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return 0;
-    return canvas.width / dprRef.current / BOARD_SIZE;
-  }, []);
+  const [canvasReady, setCanvasReady] = useState(false);
 
   // Report layout to parent for drag-and-drop coordinate mapping
   useEffect(() => {
@@ -88,6 +83,7 @@ export default function GameBoard({
       canvas.height = rect.height * dpr;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
+      setCanvasReady(true);
     });
 
     observer.observe(container);
@@ -122,7 +118,7 @@ export default function GameBoard({
 
       // Draw grid lines
       ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth = 0.5;
+      ctx.lineWidth = 1;
       for (let i = 1; i < BOARD_SIZE; i++) {
         ctx.beginPath();
         ctx.moveTo(i * cellSize, 0);
@@ -246,12 +242,12 @@ export default function GameBoard({
       animating = false;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [board, boardColors, ghostPiece, ghostRow, ghostCol, clearAnimation, comboPopups]);
+  }, [board, boardColors, ghostPiece, ghostRow, ghostCol, clearAnimation, comboPopups, canvasReady]);
 
   return (
     <div
       ref={containerRef}
-      className="w-full aspect-square max-w-[480px] rounded-lg overflow-hidden"
+      className="w-full aspect-square max-w-[480px] rounded-lg overflow-hidden border border-[#2a2a4e]"
     >
       <canvas ref={canvasRef} className="w-full h-full block" />
     </div>
