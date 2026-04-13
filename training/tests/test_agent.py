@@ -1,3 +1,5 @@
+import tempfile
+import os
 import torch
 import numpy as np
 from agent.model import DuelingDQN, get_device
@@ -189,3 +191,37 @@ def test_training_step():
     loss = trainer.train_step(batch_size=32, beta=0.4)
     assert loss is not None
     assert np.isfinite(loss), f"Loss is not finite: {loss}"
+
+
+def test_checkpoint_save_load():
+    trainer1 = _make_trainer()
+    obs, info = trainer1.env.reset(seed=1)
+    for _ in range(60):
+        mask = info["action_mask"]
+        valid = np.where(mask)[0]
+        if len(valid) == 0:
+            obs, info = trainer1.env.reset(seed=np.random.randint(10000))
+            continue
+        action = valid[np.random.randint(len(valid))]
+        next_obs, reward, terminated, _, next_info = trainer1.env.step(action)
+        trainer1.buffer.push(obs, action, reward, next_obs, terminated, next_info["action_mask"])
+        if terminated:
+            obs, info = trainer1.env.reset(seed=np.random.randint(10000))
+        else:
+            obs, info = next_obs, next_info
+
+    trainer1.train_step(32, 0.4)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_ckpt.pt")
+        trainer1.save_checkpoint(path, step=100, epsilon=0.5, scores=[10.0, 20.0])
+
+        trainer2 = _make_trainer()
+        ckpt = trainer2.load_checkpoint(path)
+
+        assert ckpt["step"] == 100
+        assert ckpt["epsilon"] == 0.5
+        assert ckpt["scores"] == [10.0, 20.0]
+
+        for p1, p2 in zip(trainer1.policy_net.parameters(), trainer2.policy_net.parameters()):
+            assert torch.allclose(p1, p2), "Policy net weights don't match"
