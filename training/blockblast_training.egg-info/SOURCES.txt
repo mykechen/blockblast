@@ -1,7 +1,9 @@
 pyproject.toml
+agent/__init__.py
 blockblast_training.egg-info/PKG-INFO
 blockblast_training.egg-info/SOURCES.txt
 blockblast_training.egg-info/dependency_links.txt
 blockblast_training.egg-info/requires.txt
 blockblast_training.egg-info/top_level.txt
+tests/test_env.py
 tests/test_parity.py
