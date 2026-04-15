@@ -45,4 +45,5 @@ training/checkpoints/
 training/logs/
 training/.venv/
 training/**/__pycache__/
+*.pyc
 training/*.egg-info/
