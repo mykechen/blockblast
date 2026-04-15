@@ -36,6 +36,9 @@ def main():
     parser.add_argument("--config", default="configs/default.yaml", help="Path to config YAML")
     parser.add_argument("--steps", type=int, default=None, help="Override total training steps")
     parser.add_argument("--checkpoint", default=None, help="Resume from checkpoint path")
+    parser.add_argument("--checkpoint-dir", default="checkpoints", help="Directory to save checkpoints")
+    parser.add_argument("--log-dir", default="logs", help="Parent directory for TensorBoard runs")
+    parser.add_argument("--run-name", default=None, help="Run name suffix (defaults to unix timestamp)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -57,13 +60,15 @@ def main():
         epsilon = ckpt["epsilon"]
         print(f"Resumed from step {start_step}")
 
-    log_dir = Path("logs") / f"run_{int(time.time())}"
+    run_name = args.run_name or str(int(time.time()))
+    log_dir = Path(args.log_dir) / f"run_{run_name}"
     log_dir.mkdir(parents=True, exist_ok=True)
     writer = SummaryWriter(str(log_dir))
     print(f"Logging to {log_dir}")
 
-    ckpt_dir = Path("checkpoints")
-    ckpt_dir.mkdir(exist_ok=True)
+    ckpt_dir = Path(args.checkpoint_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints to {ckpt_dir}")
 
     total_steps = tc["total_steps"]
     batch_size = tc["batch_size"]
@@ -113,6 +118,7 @@ def main():
                 writer.add_scalar("train/loss", loss, step)
                 writer.add_scalar("train/epsilon", epsilon, step)
                 writer.add_scalar("train/buffer_size", len(trainer.buffer), step)
+                writer.add_scalar("train/mean_q", trainer.last_mean_q, step)
 
         if step % target_freq == 0 and step > 0:
             trainer.update_target()

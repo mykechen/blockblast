@@ -80,7 +80,7 @@ def test_decode_action():
 def test_reset_observation_shape():
     env = BlockBlastEnv()
     obs, info = env.reset(seed=42)
-    assert obs.shape == (7, 8, 8)
+    assert obs.shape == (9, 8, 8)
     assert obs.dtype == np.float32
 
 
@@ -115,7 +115,7 @@ def test_valid_step_returns_reward():
     assert len(valid_actions) > 0
     action = valid_actions[0]
     obs2, reward, terminated, truncated, info2 = env.step(action)
-    assert obs2.shape == (7, 8, 8)
+    assert obs2.shape == (9, 8, 8)
     assert isinstance(reward, float)
     assert not truncated
     assert "action_mask" in info2

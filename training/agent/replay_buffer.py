@@ -52,16 +52,22 @@ class SumTree:
 
 
 class PrioritizedReplayBuffer:
-    def __init__(self, capacity: int = 500_000, alpha: float = 0.6, epsilon: float = 1e-6):
+    def __init__(
+        self,
+        capacity: int = 500_000,
+        alpha: float = 0.6,
+        epsilon: float = 1e-6,
+        obs_shape: tuple[int, ...] = (9, 8, 8),
+    ):
         self.capacity = capacity
         self.alpha = alpha
         self.epsilon = epsilon
         self.tree = SumTree(capacity)
 
-        self.states = np.zeros((capacity, 7, 8, 8), dtype=np.float32)
+        self.states = np.zeros((capacity, *obs_shape), dtype=np.float32)
         self.actions = np.zeros(capacity, dtype=np.int64)
         self.rewards = np.zeros(capacity, dtype=np.float32)
-        self.next_states = np.zeros((capacity, 7, 8, 8), dtype=np.float32)
+        self.next_states = np.zeros((capacity, *obs_shape), dtype=np.float32)
         self.dones = np.zeros(capacity, dtype=np.float32)
         self.next_masks = np.zeros((capacity, 192), dtype=bool)
 

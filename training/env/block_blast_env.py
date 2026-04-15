@@ -17,11 +17,18 @@ _DEFAULT_CONFIG_PATH = os.path.join(
 _DEFAULT_REWARD = {
     "cells_cleared_weight": 10.0,
     "multi_line_bonus": 15.0,
+    "multi_line_exp_bonus": 0.0,
+    "combo_streak_bonus": 0.0,
+    "loaded_line_bonus": 0.0,
+    "loaded_line_threshold": 6,
+    "center_fill_penalty": 0.0,
     "board_cleanliness_weight": 0.1,
     "hole_penalty": 2.0,
     "survival_bonus": 0.5,
     "game_over_penalty": 50.0,
 }
+
+_OBS_CHANNELS = 9
 
 
 def _load_config(config_path: str | None, config_override: dict | None) -> dict:
@@ -69,8 +76,16 @@ def _count_holes(board: Board) -> int:
 
 
 def _build_observation(state: GameState) -> np.ndarray:
-    """Encode game state as (7, 8, 8) float32 array."""
-    obs = np.zeros((7, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
+    """Encode game state as (9, 8, 8) float32 array.
+
+    Channels:
+      0    — board occupancy
+      1-3  — current piece shape masks (padded)
+      4-6  — piece presence indicators
+      7    — row fill proximity (row_sum / 8, broadcast across cols)
+      8    — column fill proximity (col_sum / 8, broadcast across rows)
+    """
+    obs = np.zeros((_OBS_CHANNELS, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
 
     obs[0] = state.board.astype(np.float32)
 
@@ -84,6 +99,11 @@ def _build_observation(state: GameState) -> np.ndarray:
         piece = state.current_pieces[i] if i < len(state.current_pieces) else None
         if piece is not None:
             obs[4 + i, :, :] = 1.0
+
+    row_fill = state.board.sum(axis=1).astype(np.float32) / BOARD_SIZE
+    col_fill = state.board.sum(axis=0).astype(np.float32) / BOARD_SIZE
+    obs[7] = row_fill[:, None]
+    obs[8] = col_fill[None, :]
 
     return obs
 
@@ -99,17 +119,19 @@ class BlockBlastEnv(gymnasium.Env):
         super().__init__()
         self.config = _load_config(config_path, config_override)
         self.observation_space = spaces.Box(
-            low=0, high=1, shape=(7, BOARD_SIZE, BOARD_SIZE), dtype=np.float32
+            low=0, high=1, shape=(_OBS_CHANNELS, BOARD_SIZE, BOARD_SIZE), dtype=np.float32
         )
         self.action_space = spaces.Discrete(ACTION_SPACE_SIZE)
 
         self._state: GameState | None = None
         self._rng: np.random.Generator | None = None
+        self._combo_streak: int = 0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self._rng = np.random.default_rng(seed)
         self._state = init_game(self._rng)
+        self._combo_streak = 0
 
         obs = _build_observation(self._state)
         info = {"action_mask": get_action_mask(self._state)}
@@ -176,11 +198,31 @@ class BlockBlastEnv(gymnasium.Env):
         lines_cleared = len(cleared_rows) + len(cleared_cols)
         if lines_cleared >= 2:
             reward += (lines_cleared - 1) * rc["multi_line_bonus"]
+            reward += (lines_cleared ** 2) * rc["multi_line_exp_bonus"]
 
-        occupied = int(self._state.board.sum())
+        if lines_cleared > 0:
+            self._combo_streak += 1
+            reward += self._combo_streak * rc["combo_streak_bonus"]
+        else:
+            self._combo_streak = 0
+
+        board = self._state.board
+        row_sums = board.sum(axis=1)
+        col_sums = board.sum(axis=0)
+        threshold = int(rc["loaded_line_threshold"])
+        loaded = int(
+            ((row_sums >= threshold) & (row_sums < BOARD_SIZE)).sum()
+            + ((col_sums >= threshold) & (col_sums < BOARD_SIZE)).sum()
+        )
+        reward += loaded * rc["loaded_line_bonus"]
+
+        center_fill = int(board[2:6, 2:6].sum())
+        reward -= center_fill * rc["center_fill_penalty"]
+
+        occupied = int(board.sum())
         reward += (64 - occupied) * rc["board_cleanliness_weight"]
 
-        holes = _count_holes(self._state.board)
+        holes = _count_holes(board)
         reward -= holes * rc["hole_penalty"]
 
         reward += rc["survival_bonus"]

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from .model import DuelingDQN
+from .model import DuelingDQN, build_model
 from .replay_buffer import PrioritizedReplayBuffer
 
 
@@ -13,10 +13,17 @@ class DQNTrainer:
         self.config = config["training"]
         self.device = device
 
-        self.policy_net = DuelingDQN().to(device)
-        self.target_net = DuelingDQN().to(device)
+        model_cfg = config.get("model")
+        if model_cfg is None:
+            self.policy_net = DuelingDQN().to(device)
+            self.target_net = DuelingDQN().to(device)
+        else:
+            self.policy_net = build_model(model_cfg).to(device)
+            self.target_net = build_model(model_cfg).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
+
+        self.last_mean_q: float = 0.0
 
         self.optimizer = optim.Adam(
             self.policy_net.parameters(),
@@ -91,6 +98,7 @@ class DQNTrainer:
 
         self.buffer.update_priorities(indices, td_errors.detach().cpu().numpy())
 
+        self.last_mean_q = float(q_current.detach().mean().item())
         return float(loss.item())
 
     def update_target(self):

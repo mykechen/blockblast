@@ -11,7 +11,7 @@ from env.block_blast_env import BlockBlastEnv
 def test_model_forward_pass():
     device = torch.device("cpu")
     model = DuelingDQN().to(device)
-    x = torch.randn(1, 7, 8, 8, device=device)
+    x = torch.randn(1, 9, 8, 8, device=device)
     q_values = model(x)
     assert q_values.shape == (1, 192)
     assert not torch.isnan(q_values).any()
@@ -20,7 +20,7 @@ def test_model_forward_pass():
 def test_model_batch_forward():
     device = torch.device("cpu")
     model = DuelingDQN().to(device)
-    x = torch.randn(32, 7, 8, 8, device=device)
+    x = torch.randn(32, 9, 8, 8, device=device)
     q_values = model(x)
     assert q_values.shape == (32, 192)
 
@@ -28,7 +28,7 @@ def test_model_batch_forward():
 def test_model_with_action_mask():
     device = torch.device("cpu")
     model = DuelingDQN().to(device)
-    x = torch.randn(1, 7, 8, 8, device=device)
+    x = torch.randn(1, 9, 8, 8, device=device)
     q_values = model(x)
 
     mask = torch.zeros(192, dtype=torch.bool, device=device)
@@ -46,7 +46,7 @@ def test_model_with_action_mask():
 def test_model_dueling_structure():
     device = torch.device("cpu")
     model = DuelingDQN().to(device)
-    x = torch.randn(4, 7, 8, 8, device=device)
+    x = torch.randn(4, 9, 8, 8, device=device)
 
     features = model.shared(model.flatten(model.relu3(model.bn3(model.conv3(
         model.relu2(model.bn2(model.conv2(
@@ -66,8 +66,8 @@ def test_model_dueling_structure():
 def test_replay_buffer_push_sample():
     buf = PrioritizedReplayBuffer(capacity=1000)
     for i in range(100):
-        state = np.random.randn(7, 8, 8).astype(np.float32)
-        next_state = np.random.randn(7, 8, 8).astype(np.float32)
+        state = np.random.randn(9, 8, 8).astype(np.float32)
+        next_state = np.random.randn(9, 8, 8).astype(np.float32)
         action_mask = np.ones(192, dtype=bool)
         buf.push(state, i % 192, float(i), next_state, False, action_mask)
 
@@ -76,10 +76,10 @@ def test_replay_buffer_push_sample():
     batch = buf.sample(32, beta=0.4)
     states, actions, rewards, next_states, dones, next_masks, weights, indices = batch
 
-    assert states.shape == (32, 7, 8, 8)
+    assert states.shape == (32, 9, 8, 8)
     assert actions.shape == (32,)
     assert rewards.shape == (32,)
-    assert next_states.shape == (32, 7, 8, 8)
+    assert next_states.shape == (32, 9, 8, 8)
     assert dones.shape == (32,)
     assert next_masks.shape == (32, 192)
     assert weights.shape == (32,)
@@ -89,8 +89,8 @@ def test_replay_buffer_push_sample():
 def test_replay_buffer_priority_update():
     buf = PrioritizedReplayBuffer(capacity=1000)
     for i in range(50):
-        state = np.zeros((7, 8, 8), dtype=np.float32)
-        next_state = np.zeros((7, 8, 8), dtype=np.float32)
+        state = np.zeros((9, 8, 8), dtype=np.float32)
+        next_state = np.zeros((9, 8, 8), dtype=np.float32)
         mask = np.ones(192, dtype=bool)
         buf.push(state, 0, 0.0, next_state, False, mask)
 
@@ -114,8 +114,8 @@ def test_replay_buffer_priority_update():
 def test_replay_buffer_capacity():
     buf = PrioritizedReplayBuffer(capacity=100)
     for i in range(200):
-        state = np.zeros((7, 8, 8), dtype=np.float32)
-        next_state = np.zeros((7, 8, 8), dtype=np.float32)
+        state = np.zeros((9, 8, 8), dtype=np.float32)
+        next_state = np.zeros((9, 8, 8), dtype=np.float32)
         mask = np.ones(192, dtype=bool)
         buf.push(state, 0, 0.0, next_state, False, mask)
 
