@@ -21,7 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.dqn import DQNTrainer
+from agent.dqn import DQNTrainer, C51Trainer
 from agent.model import get_device
 from env.block_blast_env import BlockBlastEnv
 
@@ -50,7 +50,8 @@ def main():
     print(f"Device: {device}")
 
     env = BlockBlastEnv(config_path=args.config)
-    trainer = DQNTrainer(env, config, device)
+    TrainerClass = C51Trainer if config.get("algorithm") == "c51" else DQNTrainer
+    trainer = TrainerClass(env, config, device)
 
     start_step = 0
     epsilon = tc["epsilon_start"]
@@ -78,6 +79,21 @@ def main():
     eps_start = tc["epsilon_start"]
     eps_end = tc["epsilon_end"]
     eps_decay = tc["epsilon_decay_steps"]
+    n_step = int(tc.get("n_step", 1))
+    gamma = tc["gamma"]
+    nstep_buffer: deque = deque()
+
+    def _emit_nstep(buf: deque, force_done: bool = False):
+        """Aggregate the fronted transitions in buf into one n-step transition and push."""
+        if not buf:
+            return
+        s0, a0, _, _, _, _ = buf[0]
+        R = 0.0
+        for i, t in enumerate(buf):
+            R += (gamma ** i) * t[2]
+        _, _, _, s_last, done_last, mask_last = buf[-1]
+        done_flag = bool(done_last or force_done)
+        trainer.buffer.push(s0, a0, R, s_last, done_flag, mask_last)
 
     episode_rewards = deque(maxlen=100)
     episode_scores = deque(maxlen=100)
@@ -105,7 +121,10 @@ def main():
         done = terminated or truncated
         next_mask = next_info["action_mask"]
 
-        trainer.buffer.push(obs, action, reward, next_obs, done, next_mask)
+        nstep_buffer.append((obs, action, float(reward), next_obs, done, next_mask))
+        if len(nstep_buffer) >= n_step:
+            _emit_nstep(nstep_buffer)
+            nstep_buffer.popleft()
 
         episode_reward += reward
         episode_length += 1
@@ -124,6 +143,10 @@ def main():
             trainer.update_target()
 
         if done:
+            while nstep_buffer:
+                _emit_nstep(nstep_buffer, force_done=True)
+                nstep_buffer.popleft()
+
             game_score = env._state.score if env._state else 0
             episode_rewards.append(episode_reward)
             episode_scores.append(game_score)

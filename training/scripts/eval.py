@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import copy
 import glob
 import os
 import sys
@@ -22,9 +23,135 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.dqn import DQNTrainer
+from agent.dqn import DQNTrainer, C51Trainer
 from agent.model import get_device
 from env.block_blast_env import BlockBlastEnv
+
+
+def _snapshot(env: BlockBlastEnv) -> dict:
+    return {
+        "state": copy.deepcopy(env._state),
+        "rng_state": env._rng.bit_generator.state if env._rng else None,
+        "combo_streak": env._combo_streak,
+    }
+
+
+def _restore(env: BlockBlastEnv, snap: dict) -> None:
+    env._state = copy.deepcopy(snap["state"])
+    if snap["rng_state"] is not None and env._rng is not None:
+        env._rng.bit_generator.state = snap["rng_state"]
+    env._combo_streak = snap["combo_streak"]
+
+
+def _pick_candidates(
+    trainer: DQNTrainer,
+    obs: np.ndarray,
+    action_mask: np.ndarray,
+    device: torch.device,
+    k: int,
+) -> np.ndarray:
+    valid = np.where(action_mask)[0]
+    if len(valid) <= k:
+        return valid
+    state_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+    with torch.no_grad():
+        q = trainer.get_q_values(state_t).squeeze(0).cpu().numpy()
+    q[~action_mask] = -np.inf
+    return np.argsort(-q)[:k].astype(np.int64)
+
+
+def _expand_and_score_1step(
+    trainer: DQNTrainer,
+    env: BlockBlastEnv,
+    snap: dict,
+    candidates: np.ndarray,
+    device: torch.device,
+    gamma: float,
+) -> tuple[np.ndarray, list, list, list]:
+    """Step env for each candidate from snap; return (values_1step, next_obs, next_masks, terms).
+
+    values_1step[i] = reward_i + gamma * max_a' Q(s'_i, a') (0 if terminal)."""
+    next_obs_list, next_masks_list, rewards_list, terms_list = [], [], [], []
+    for a in candidates:
+        _restore(env, snap)
+        n_obs, r, term, trunc, n_info = env.step(int(a))
+        next_obs_list.append(n_obs)
+        next_masks_list.append(n_info["action_mask"])
+        rewards_list.append(float(r))
+        terms_list.append(bool(term or trunc))
+    _restore(env, snap)
+
+    states_batch = torch.tensor(np.array(next_obs_list), dtype=torch.float32, device=device)
+    with torch.no_grad():
+        q_batch = trainer.get_q_values(states_batch).cpu().numpy()
+    masks_arr = np.array(next_masks_list, dtype=bool)
+    q_batch[~masks_arr] = -np.inf
+    max_q = q_batch.max(axis=1)
+    max_q[~np.isfinite(max_q)] = 0.0
+
+    rewards_arr = np.array(rewards_list, dtype=np.float32)
+    terms_arr = np.array(terms_list, dtype=bool)
+    bootstraps = np.where(terms_arr, 0.0, max_q).astype(np.float32)
+    values = rewards_arr + gamma * bootstraps
+    return values, next_obs_list, next_masks_list, terms_list
+
+
+def lookahead_select_action(
+    trainer: DQNTrainer,
+    env: BlockBlastEnv,
+    obs: np.ndarray,
+    action_mask: np.ndarray,
+    device: torch.device,
+    gamma: float = 0.99,
+    depth: int = 1,
+    k: int = 8,
+) -> int:
+    """Pick action by lookahead search. depth=1: r+γ·maxQ(s'). depth=2: pruned top-k 2-step search."""
+    valid = np.where(action_mask)[0]
+    if len(valid) == 0:
+        return 0
+    if len(valid) == 1:
+        return int(valid[0])
+
+    snap = _snapshot(env)
+
+    if depth == 1:
+        values, *_ = _expand_and_score_1step(trainer, env, snap, valid, device, gamma)
+        return int(valid[int(values.argmax())])
+
+    # depth == 2: prune to top-k at root, then at each child, 1-step lookahead with sub-top-k
+    root_candidates = _pick_candidates(trainer, obs, action_mask, device, k)
+    child_rewards, child_next_obs, child_next_masks, child_terms = [], [], [], []
+    for a in root_candidates:
+        _restore(env, snap)
+        n_obs, r, term, trunc, n_info = env.step(int(a))
+        child_rewards.append(float(r))
+        child_next_obs.append(n_obs)
+        child_next_masks.append(n_info["action_mask"])
+        child_terms.append(bool(term or trunc))
+    _restore(env, snap)
+
+    values = np.zeros(len(root_candidates), dtype=np.float32)
+    for i, a in enumerate(root_candidates):
+        if child_terms[i]:
+            values[i] = child_rewards[i]
+            continue
+        sub_mask = child_next_masks[i]
+        if not sub_mask.any():
+            values[i] = child_rewards[i]
+            continue
+        sub_candidates = _pick_candidates(trainer, child_next_obs[i], sub_mask, device, k)
+        _restore(env, snap)
+        env.step(int(a))
+        sub_snap = _snapshot(env)
+        sub_values, *_ = _expand_and_score_1step(
+            trainer, env, sub_snap, sub_candidates, device, gamma
+        )
+        v_next = float(sub_values.max())
+        values[i] = child_rewards[i] + gamma * v_next
+
+    _restore(env, snap)
+    return int(root_candidates[int(values.argmax())])
 
 
 def load_config(path: str) -> dict:
@@ -39,6 +166,9 @@ def evaluate(
     epsilon: float,
     device: torch.device,
     seed_base: int = 1_000_000,
+    lookahead_depth: int = 0,
+    lookahead_k: int = 8,
+    gamma: float = 0.99,
 ) -> dict:
     scores: list[int] = []
     rewards: list[float] = []
@@ -52,8 +182,14 @@ def evaluate(
         done = False
 
         while not done:
-            state_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
-            action = trainer.select_action(state_t, info["action_mask"], epsilon)
+            if lookahead_depth > 0:
+                action = lookahead_select_action(
+                    trainer, env, obs, info["action_mask"], device,
+                    gamma=gamma, depth=lookahead_depth, k=lookahead_k,
+                )
+            else:
+                state_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+                action = trainer.select_action(state_t, info["action_mask"], epsilon)
             obs, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
             ep_length += 1
@@ -131,16 +267,36 @@ def main():
         action="store_true",
         help="Also run a random (uniform over valid actions) baseline",
     )
+    parser.add_argument(
+        "--lookahead",
+        action="store_true",
+        help="Shortcut for --lookahead-depth 1",
+    )
+    parser.add_argument(
+        "--lookahead-depth",
+        type=int,
+        default=0,
+        help="0=greedy, 1=1-step lookahead, 2=2-step pruned lookahead",
+    )
+    parser.add_argument(
+        "--lookahead-k",
+        type=int,
+        default=8,
+        help="Top-k pruning width for lookahead-depth >= 2",
+    )
     parser.add_argument("--seed-base", type=int, default=1_000_000)
     args = parser.parse_args()
 
     config = load_config(args.config)
     device = get_device()
-    print(f"Device: {device}")
+    gamma = float(config.get("training", {}).get("gamma", 0.99))
+    lookahead_depth = max(args.lookahead_depth, 1 if args.lookahead else 0)
+    print(f"Device: {device}  |  lookahead_depth: {lookahead_depth} (k={args.lookahead_k})  |  gamma: {gamma}")
     print(f"Episodes per run: {args.episodes}  |  seed_base={args.seed_base}\n")
 
     env = BlockBlastEnv(config_path=args.config)
-    trainer = DQNTrainer(env, config, device)
+    TrainerClass = C51Trainer if config.get("algorithm") == "c51" else DQNTrainer
+    trainer = TrainerClass(env, config, device)
 
     if args.random_baseline:
         t0 = time.time()
@@ -168,6 +324,9 @@ def main():
                 args.epsilon,
                 device,
                 seed_base=args.seed_base,
+                lookahead_depth=lookahead_depth,
+                lookahead_k=args.lookahead_k,
+                gamma=gamma,
             )
             results.append((path, r))
             print_result(Path(path).name, r)

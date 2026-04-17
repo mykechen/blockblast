@@ -44,6 +44,7 @@ export default function BlockBlastGame() {
   const [comboPopups, setComboPopups] = useState<ComboPopup[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [aiPlaying, setAiPlaying] = useState(false);
 
   const boardRectRef = useRef<DOMRect | null>(null);
   const cellSizeRef = useRef(0);
@@ -169,136 +170,106 @@ export default function BlockBlastGame() {
     []
   );
 
+  const executePlacement = useCallback(
+    (pieceIndex: number, row: number, col: number) => {
+      const currentGame = gameRef.current;
+      const currentColors = boardColorsRef.current;
+      if (!currentGame) return false;
+
+      const piece = currentGame.currentPieces[pieceIndex];
+      if (!piece || !canPlacePiece(currentGame.board, piece, row, col)) return false;
+
+      const newState = handlePlacement(currentGame, pieceIndex, row, col);
+      if (!newState) return false;
+
+      const newColors = currentColors.map(r => [...r]);
+      for (let r = 0; r < piece.shape.length; r++) {
+        for (let c = 0; c < piece.shape[r].length; c++) {
+          if (piece.shape[r][c]) {
+            newColors[row + r][col + c] = piece.color;
+          }
+        }
+      }
+
+      const clearedRows: number[] = [];
+      const clearedCols: number[] = [];
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        if (newColors[r].every(c => c !== null)) clearedRows.push(r);
+      }
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (newColors.every(row => row[c] !== null)) clearedCols.push(c);
+      }
+
+      const linesCleared = clearedRows.length + clearedCols.length;
+
+      if (linesCleared > 0) {
+        spawnClearParticles(clearedRows, clearedCols, newColors);
+      }
+
+      for (const r of clearedRows) {
+        for (let c = 0; c < BOARD_SIZE; c++) newColors[r][c] = null;
+      }
+      for (const c of clearedCols) {
+        for (let r = 0; r < BOARD_SIZE; r++) newColors[r][c] = null;
+      }
+
+      if (linesCleared > 0) {
+        if (newState.combo > 1) {
+          playCombo(newState.combo);
+        } else {
+          playClear();
+        }
+      } else {
+        playPlace();
+      }
+
+      if (linesCleared > 0) {
+        setClearAnimation({ rows: clearedRows, cols: clearedCols, startTime: performance.now() });
+        setTimeout(() => setClearAnimation(null), 500);
+
+        const cellSize = cellSizeRef.current;
+        const centerX = (BOARD_SIZE * cellSize) / 2;
+        const centerY = (BOARD_SIZE * cellSize) / 2;
+
+        if (newState.combo > 0) {
+          setComboPopups(prev => [...prev, { text: `${newState.combo + 1}x COMBO!`, x: centerX, y: centerY - 20, startTime: performance.now(), color: '#ff8800' }]);
+        } else if (linesCleared >= 2) {
+          setComboPopups(prev => [...prev, { text: `${linesCleared} LINES!`, x: centerX, y: centerY - 20, startTime: performance.now(), color: '#44dd88' }]);
+        }
+
+        const pointsEarned = newState.score - (currentGame.score ?? 0);
+        if (pointsEarned > 10) {
+          setComboPopups(prev => [...prev, { text: `+${pointsEarned}`, x: centerX, y: centerY + 15, startTime: performance.now(), color: '#ffffff' }]);
+        }
+
+        setTimeout(() => {
+          setComboPopups(prev => prev.filter(p => performance.now() - p.startTime < 1000));
+        }, 1100);
+      }
+
+      setBoardColors(newColors);
+      setGame(newState);
+
+      if (newState.isGameOver) {
+        setTimeout(() => playGameOver(), 300);
+      }
+
+      return true;
+    },
+    []
+  );
+
   const handleDragEnd = useCallback(
     (clientX: number, clientY: number) => {
       const currentDrag = dragStateRef.current;
-      const currentGame = gameRef.current;
-      const currentColors = boardColorsRef.current;
-
-      if (!currentDrag || !currentGame) {
+      if (!currentDrag || !gameRef.current) {
         dragStateRef.current = null;
         setDragState(null);
         return;
       }
 
       const { row, col } = clientToGrid(clientX, clientY, currentDrag.piece);
-      if (canPlacePiece(currentGame.board, currentDrag.piece, row, col)) {
-        const newState = handlePlacement(currentGame, currentDrag.pieceIndex, row, col);
-
-        if (newState) {
-          // Update board colors
-          const newColors = currentColors.map(r => [...r]);
-          for (let r = 0; r < currentDrag.piece.shape.length; r++) {
-            for (let c = 0; c < currentDrag.piece.shape[r].length; c++) {
-              if (currentDrag.piece.shape[r][c]) {
-                newColors[row + r][col + c] = currentDrag.piece.color;
-              }
-            }
-          }
-
-          // Check which lines were cleared
-          const clearedRows: number[] = [];
-          const clearedCols: number[] = [];
-
-          for (let r = 0; r < BOARD_SIZE; r++) {
-            if (newColors[r].every(c => c !== null)) clearedRows.push(r);
-          }
-          for (let c = 0; c < BOARD_SIZE; c++) {
-            if (newColors.every(row => row[c] !== null)) clearedCols.push(c);
-          }
-
-          const linesCleared = clearedRows.length + clearedCols.length;
-
-          // Spawn particles before clearing colors
-          if (linesCleared > 0) {
-            spawnClearParticles(clearedRows, clearedCols, newColors);
-          }
-
-          // Clear colors for cleared lines
-          for (const r of clearedRows) {
-            for (let c = 0; c < BOARD_SIZE; c++) newColors[r][c] = null;
-          }
-          for (const c of clearedCols) {
-            for (let r = 0; r < BOARD_SIZE; r++) newColors[r][c] = null;
-          }
-
-          // Sound effects
-          if (linesCleared > 0) {
-            if (newState.combo > 1) {
-              playCombo(newState.combo);
-            } else {
-              playClear();
-            }
-          } else {
-            playPlace();
-          }
-
-          // Clear animation + popups
-          if (linesCleared > 0) {
-            setClearAnimation({
-              rows: clearedRows,
-              cols: clearedCols,
-              startTime: performance.now(),
-            });
-            setTimeout(() => setClearAnimation(null), 500);
-
-            const cellSize = cellSizeRef.current;
-            const centerX = (BOARD_SIZE * cellSize) / 2;
-            const centerY = (BOARD_SIZE * cellSize) / 2;
-
-            if (newState.combo > 0) {
-              setComboPopups(prev => [
-                ...prev,
-                {
-                  text: `${newState.combo + 1}x COMBO!`,
-                  x: centerX,
-                  y: centerY - 20,
-                  startTime: performance.now(),
-                  color: '#ff8800',
-                },
-              ]);
-            } else if (linesCleared >= 2) {
-              setComboPopups(prev => [
-                ...prev,
-                {
-                  text: `${linesCleared} LINES!`,
-                  x: centerX,
-                  y: centerY - 20,
-                  startTime: performance.now(),
-                  color: '#44dd88',
-                },
-              ]);
-            }
-
-            const pointsEarned = newState.score - (currentGame.score ?? 0);
-            if (pointsEarned > 10) {
-              setComboPopups(prev => [
-                ...prev,
-                {
-                  text: `+${pointsEarned}`,
-                  x: centerX,
-                  y: centerY + 15,
-                  startTime: performance.now(),
-                  color: '#ffffff',
-                },
-              ]);
-            }
-
-            setTimeout(() => {
-              setComboPopups(prev => prev.filter(p => performance.now() - p.startTime < 1000));
-            }, 1100);
-          }
-
-          setBoardColors(newColors);
-          setGame(newState);
-
-          // Game over sound
-          if (newState.isGameOver) {
-            setTimeout(() => playGameOver(), 300);
-          }
-        }
-      } else {
-        // Invalid placement — play error sound if over the board
+      if (!executePlacement(currentDrag.pieceIndex, row, col)) {
         const rect = boardRectRef.current;
         if (rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
           playInvalid();
@@ -308,8 +279,37 @@ export default function BlockBlastGame() {
       dragStateRef.current = null;
       setDragState(null);
     },
-    [clientToGrid]
+    [clientToGrid, executePlacement]
   );
+
+  // AI auto-play: fetch move from Python server and execute
+  useEffect(() => {
+    if (!aiPlaying || !game || game.isGameOver) {
+      if (aiPlaying && game?.isGameOver) setAiPlaying(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('http://localhost:8000/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            board: game.board,
+            pieces: game.currentPieces,
+          }),
+        });
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const { pieceIndex, row, col } = await res.json();
+        executePlacement(pieceIndex, row, col);
+      } catch (err) {
+        console.error('AI move failed:', err);
+        setAiPlaying(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [aiPlaying, game, executePlacement]);
 
   const handleRestart = useCallback(() => {
     setGame(initGame());
@@ -395,18 +395,85 @@ export default function BlockBlastGame() {
         onPointerType={handlePointerType}
       />
 
-      {/* New Game button */}
-      <button
-        onClick={handleNewGameClick}
-        className="mt-1 px-4 py-1.5 rounded-lg text-xs uppercase tracking-wider font-semibold transition-all duration-150 hover:brightness-125 active:scale-95 cursor-pointer"
-        style={{
-          background: 'rgba(255, 255, 255, 0.06)',
-          color: 'var(--text-secondary)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-        }}
-      >
-        New Game
-      </button>
+      {/* Button row */}
+      <div className="flex gap-3 mt-1">
+        <button
+          onClick={handleNewGameClick}
+          className="group font-mono-ui flex items-center gap-2.5 px-7 py-3 rounded-full text-[12px] uppercase font-medium cursor-pointer transition-[transform,filter,border-color] duration-150 hover:brightness-125 active:scale-[0.96]"
+          style={{
+            letterSpacing: '0.2em',
+            color: 'rgba(255,255,255,0.78)',
+            border: '1px solid var(--chrome-border)',
+            background:
+              'linear-gradient(135deg, rgba(79,240,255,0.09), rgba(255,46,106,0.09))',
+            backgroundSize: '200% 200%',
+            animation: 'sheen 6s ease-in-out infinite',
+            boxShadow:
+              'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.35)',
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="transition-transform duration-300 group-hover:-rotate-90"
+          >
+            <path d="M21 12a9 9 0 1 1-3.1-6.8" />
+            <path d="M21 4v5h-5" />
+          </svg>
+          <span>New Game</span>
+        </button>
+
+        <button
+          onClick={() => {
+            if (aiPlaying) {
+              setAiPlaying(false);
+            } else {
+              if (game?.isGameOver) handleRestart();
+              setAiPlaying(true);
+            }
+          }}
+          className="group font-mono-ui flex items-center gap-2.5 px-7 py-3 rounded-full text-[12px] uppercase font-medium cursor-pointer transition-[transform,filter,border-color] duration-150 hover:brightness-125 active:scale-[0.96]"
+          style={{
+            letterSpacing: '0.2em',
+            color: aiPlaying ? '#ff4466' : 'rgba(255,255,255,0.78)',
+            border: `1px solid ${aiPlaying ? 'rgba(255,68,102,0.4)' : 'var(--chrome-border)'}`,
+            background: aiPlaying
+              ? 'linear-gradient(135deg, rgba(255,68,102,0.15), rgba(255,46,106,0.15))'
+              : 'linear-gradient(135deg, rgba(68,255,136,0.09), rgba(68,136,255,0.09))',
+            backgroundSize: '200% 200%',
+            animation: 'sheen 6s ease-in-out infinite',
+            boxShadow:
+              'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.35)',
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {aiPlaying ? (
+              <>
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </>
+            ) : (
+              <polygon points="5,3 19,12 5,21" />
+            )}
+          </svg>
+          <span>{aiPlaying ? 'Stop AI' : 'AI Play'}</span>
+        </button>
+      </div>
 
       {/* Floating drag overlay */}
       {dragState && dragState.clientX !== 0 && (

@@ -4,10 +4,10 @@ import torch.nn.functional as F
 
 
 def get_device() -> torch.device:
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
     if torch.cuda.is_available():
         return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
     return torch.device("cpu")
 
 
@@ -130,9 +130,81 @@ class ResidualDuelingDQN(nn.Module):
         return value + advantage - advantage.mean(dim=1, keepdim=True)
 
 
+class CategoricalDuelingDQN(nn.Module):
+    """C51 distributional variant of ResidualDuelingDQN. Outputs (B, action_size, n_atoms) log-probs."""
+
+    def __init__(
+        self,
+        in_channels: int = 9,
+        action_size: int = 192,
+        hidden_channels: int = 96,
+        num_blocks: int = 4,
+        fc_hidden: int = 768,
+        head_hidden: int = 256,
+        n_atoms: int = 51,
+        v_min: float = -10.0,
+        v_max: float = 300.0,
+    ):
+        super().__init__()
+        self.action_size = action_size
+        self.n_atoms = n_atoms
+        self.v_min = v_min
+        self.v_max = v_max
+
+        self.register_buffer(
+            "support", torch.linspace(v_min, v_max, n_atoms)
+        )
+
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_channels),
+            nn.ReLU(inplace=True),
+        )
+        self.blocks = nn.Sequential(
+            *[_ResBlock(hidden_channels) for _ in range(num_blocks)]
+        )
+
+        self.flatten = nn.Flatten()
+        flat_size = hidden_channels * 8 * 8
+
+        self.shared = nn.Sequential(
+            nn.Linear(flat_size, fc_hidden),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(fc_hidden, head_hidden),
+            nn.ReLU(inplace=True),
+            nn.Linear(head_hidden, n_atoms),
+        )
+        self.advantage_head = nn.Sequential(
+            nn.Linear(fc_hidden, head_hidden),
+            nn.ReLU(inplace=True),
+            nn.Linear(head_hidden, action_size * n_atoms),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B = x.size(0)
+        x = self.stem(x)
+        x = self.blocks(x)
+        x = self.flatten(x)
+        x = self.shared(x)
+
+        v = self.value_head(x).view(B, 1, self.n_atoms)
+        a = self.advantage_head(x).view(B, self.action_size, self.n_atoms)
+        logits = v + a - a.mean(dim=1, keepdim=True)
+        return F.log_softmax(logits, dim=2)
+
+    def q_values(self, x: torch.Tensor) -> torch.Tensor:
+        log_p = self.forward(x)
+        p = log_p.exp()
+        return (p * self.support.unsqueeze(0).unsqueeze(0)).sum(dim=2)
+
+
 MODEL_REGISTRY = {
     "dueling": DuelingDQN,
     "residual": ResidualDuelingDQN,
+    "categorical": CategoricalDuelingDQN,
 }
 
 

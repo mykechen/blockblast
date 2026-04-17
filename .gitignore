@@ -41,9 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 # Training artifacts
-training/checkpoints/
+training/checkpoints*/
 training/logs/
+training/demos/
 training/.venv/
 training/**/__pycache__/
 *.pyc
 training/*.egg-info/
+training/**/*.egg-info/
+*.egg-info/
+.claude/

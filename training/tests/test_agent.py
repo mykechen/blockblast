@@ -2,9 +2,9 @@ import tempfile
 import os
 import torch
 import numpy as np
-from agent.model import DuelingDQN, get_device
+from agent.model import DuelingDQN, CategoricalDuelingDQN, get_device
 from agent.replay_buffer import PrioritizedReplayBuffer
-from agent.dqn import DQNTrainer
+from agent.dqn import DQNTrainer, C51Trainer
 from env.block_blast_env import BlockBlastEnv
 
 
@@ -225,3 +225,126 @@ def test_checkpoint_save_load():
 
         for p1, p2 in zip(trainer1.policy_net.parameters(), trainer2.policy_net.parameters()):
             assert torch.allclose(p1, p2), "Policy net weights don't match"
+
+
+# --- C51 model tests ---
+
+def test_c51_model_forward():
+    device = torch.device("cpu")
+    model = CategoricalDuelingDQN(n_atoms=51).to(device)
+    x = torch.randn(1, 9, 8, 8, device=device)
+    log_p = model(x)
+    assert log_p.shape == (1, 192, 51)
+    assert (log_p <= 0).all(), "log_softmax output should be <= 0"
+    p = log_p.exp()
+    sums = p.sum(dim=2)
+    assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
+
+
+def test_c51_model_q_values():
+    device = torch.device("cpu")
+    model = CategoricalDuelingDQN(n_atoms=51).to(device)
+    x = torch.randn(4, 9, 8, 8, device=device)
+    q = model.q_values(x)
+    assert q.shape == (4, 192)
+    assert not torch.isnan(q).any()
+
+
+# --- C51 Trainer tests ---
+
+def _make_c51_trainer():
+    env = BlockBlastEnv()
+    config = {
+        "algorithm": "c51",
+        "model": {
+            "type": "categorical",
+            "n_atoms": 51,
+            "v_min": -10.0,
+            "v_max": 300.0,
+            "hidden_channels": 32,
+            "num_blocks": 1,
+            "fc_hidden": 128,
+            "head_hidden": 64,
+        },
+        "training": {
+            "batch_size": 32,
+            "gamma": 0.99,
+            "learning_rate": 0.001,
+            "replay_buffer_size": 1000,
+            "min_replay_size": 50,
+            "target_update_freq": 100,
+            "train_freq": 4,
+            "epsilon_start": 1.0,
+            "epsilon_end": 0.05,
+            "epsilon_decay_steps": 1000,
+            "total_steps": 500,
+            "n_step": 1,
+        },
+    }
+    return C51Trainer(env, config, device=torch.device("cpu"))
+
+
+def test_c51_select_action():
+    trainer = _make_c51_trainer()
+    obs, info = trainer.env.reset(seed=42)
+    state = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+    mask = info["action_mask"]
+    action = trainer.select_action(state, mask, epsilon=0.0)
+    assert 0 <= action < 192
+    assert mask[action], "C51 greedy action must be valid"
+
+
+def test_c51_train_step():
+    trainer = _make_c51_trainer()
+    obs, info = trainer.env.reset(seed=1)
+    for _ in range(60):
+        mask = info["action_mask"]
+        valid = np.where(mask)[0]
+        if len(valid) == 0:
+            obs, info = trainer.env.reset(seed=np.random.randint(10000))
+            continue
+        action = valid[np.random.randint(len(valid))]
+        next_obs, reward, terminated, truncated, next_info = trainer.env.step(action)
+        next_mask = next_info["action_mask"]
+        trainer.buffer.push(obs, action, reward, next_obs, terminated, next_mask)
+        if terminated:
+            obs, info = trainer.env.reset(seed=np.random.randint(10000))
+        else:
+            obs, info = next_obs, next_info
+
+    loss = trainer.train_step(batch_size=32, beta=0.4)
+    assert loss is not None
+    assert np.isfinite(loss), f"C51 loss is not finite: {loss}"
+
+
+def test_c51_checkpoint_save_load():
+    trainer1 = _make_c51_trainer()
+    obs, info = trainer1.env.reset(seed=1)
+    for _ in range(60):
+        mask = info["action_mask"]
+        valid = np.where(mask)[0]
+        if len(valid) == 0:
+            obs, info = trainer1.env.reset(seed=np.random.randint(10000))
+            continue
+        action = valid[np.random.randint(len(valid))]
+        next_obs, reward, terminated, _, next_info = trainer1.env.step(action)
+        trainer1.buffer.push(obs, action, reward, next_obs, terminated, next_info["action_mask"])
+        if terminated:
+            obs, info = trainer1.env.reset(seed=np.random.randint(10000))
+        else:
+            obs, info = next_obs, next_info
+
+    trainer1.train_step(32, 0.4)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_c51_ckpt.pt")
+        trainer1.save_checkpoint(path, step=100, epsilon=0.5, scores=[10.0, 20.0])
+
+        trainer2 = _make_c51_trainer()
+        ckpt = trainer2.load_checkpoint(path)
+
+        assert ckpt["step"] == 100
+        assert ckpt["epsilon"] == 0.5
+
+        for p1, p2 in zip(trainer1.policy_net.parameters(), trainer2.policy_net.parameters()):
+            assert torch.allclose(p1, p2), "C51 policy net weights don't match"

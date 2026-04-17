@@ -220,3 +220,107 @@ Two things I'll carry to the next RL project:
 2. **Evaluate deterministically, report distributions.** Training curves include exploration noise and are a terrible basis for comparing checkpoints. Fix seeds, set ε=0, run 100 episodes, report mean/median/p25/p75/max. That's the number to trust — and the right shape of the answer, since in a game like this the mean hides a fat right tail.
 
 The plateau at ~1,400 mean score isn't a failure — it's the signal that tells me which lever to pull next. Diminishing returns on step count means the bottleneck is upstream: reward shaping, observation richness, or algorithm. That's a much more interesting problem than "run it longer."
+
+---
+
+## Follow-up: porting to CUDA and pushing the ceiling
+
+After the MacBook run, I ported the training stack to a desktop with an RTX 4070 and ran a series of experiments to see how far the DQN architecture could go.
+
+### Porting to CUDA
+
+The `uv.lock` was generated on macOS with CPU/MPS PyTorch wheels. Replacing them with CUDA 12.4 wheels meant pinning a custom index in `pyproject.toml`:
+
+```toml
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+```
+
+A one-off `uv pip install --force-reinstall` doesn't stick — the next `uv run` re-syncs the lockfile. The only persistent fix is lockfile-level. Also: `get_device()` was MPS-first, swapped to CUDA → MPS → CPU. One-line change, all 65 tests still passed.
+
+Throughput on the 4070: ~220 SPS sustained, 35-40% GPU utilization, ~1.7GB VRAM. The env is CPU-bound (step is pure NumPy), not GPU-bound — meaning the 4070 was idle most of the time, and background apps eating CPU on the host mattered more than I expected.
+
+### Tier 2: a stronger base model
+
+Same approach as the MacBook run but with a residual model (96 channels × 4 blocks, 768 FC) and 2M steps. Config at `configs/tier2.yaml`. 28 minutes wall time.
+
+| Checkpoint | Mean (100 held-out eps) | vs Random (222) |
+|---|---|---|
+| `checkpoint_1850000.pt` | **2,495** | 11.2× |
+| `final_model.pt` | 2,190 | 9.9× |
+
+**74% improvement over the writeup's 1,434** with the same step budget, same algorithm, just the bigger model. The best checkpoint wasn't the final one — late-training instability is a known DQN quirk and worth sweeping for.
+
+### What inference-time search *didn't* do
+
+Implemented 1-step lookahead (simulate each valid action, pick `argmax(r + γ · max Q(s'))`) expecting +15-25% as the literature suggests. Result on tier2:
+
+```
+Greedy:           mean 2495.4
+1-step lookahead: mean 2495.4  (identical to the decimal)
+2-step pruned (k=8): mean 2495.4  (also identical)
+```
+
+**Zero gain.** Not a bug. This is what happens when the Q-net is tightly converged: `argmax_a Q(s,a)` already equals `argmax_a [r(s,a) + γ·max Q(s',a')]` because the Bellman optimality condition is nearly satisfied. Inference-time search only helps when the value function is noisy or miscalibrated — it's a correction for imperfect training, not an amplifier for good training.
+
+Gains from search would require either:
+1. A value head that provides a *different* signal than the policy argmax (AlphaZero-style separation), or
+2. Deep MCTS with many simulations to discover trajectories the greedy rollout wouldn't,
+3. Distributional RL where the full return distribution informs search.
+
+Lesson for the doc I wish I'd found earlier: *"If your Q-net is already strong, don't expect shallow lookahead to stack on top. It's a fix for a different failure mode."*
+
+### What n-step returns *didn't* do
+
+Added 3-step return aggregation in the replay buffer — stock Rainbow ingredient, well-documented gain on Atari. Expected +10-25%.
+
+Combined with a fresh 5M-step run (`configs/tier3.yaml`) that kept the residual model and added n-step. At 90% through training, the training-mean score was **~900 vs tier2's 1,586 at 2M**. The gamble didn't pay off.
+
+Likely causes, in order of plausibility:
+1. **3-step averaging blurs credit on bursty reward signals** — line clears are spike-like; averaging 3 steps of reward before bootstrapping diffuses the gradient signal for the move that actually caused the clear.
+2. **Longer ε decay (1.5M vs 750k)** — twice the exploration budget, half the effective exploitation time per step.
+3. **Replay buffer staleness** — 500k buffer against 5M training steps means the oldest experience is 10× off-policy by the end, which can destabilize convergence.
+
+I ran it anyway on the "you don't learn which levers fail without pulling them" principle. Also a useful negative result: **the recipes that compose well on Atari don't all compose on every MDP**, especially ones with sparse bursty rewards and short episodes.
+
+The first instinct — hole_penalty shaping at -5/hole — was killed even earlier. The agent settled at ~200 training score with ε near minimum because the -5 penalty dominated cell-clear reward, so the policy that minimized hole creation was "place pieces conservatively and lose quickly." Reward shaping in RL is alignment-adjacent; a stronger penalty can create a new optimum that wasn't what you wanted to optimize.
+
+### Demo search: where the fat tail lives
+
+What actually produced demo-grade games was a **seed sweep harness** (`scripts/demo_search.py`): eval the greedy policy on N seeds, sort by score, save the top-K with their action sequences to JSON. Replay any game deterministically with `scripts/replay_demo.py`.
+
+On tier2's `checkpoint_1850000.pt` over 10,000 seeds:
+- Mean: 2,075 (close to the 100-ep eval, confirms the sample is representative)
+- Median: 1,541
+- p95: 5,700
+- p99: 9,076
+- **Max: 32,147** (seed 5,008,089, 62 moves)
+
+The max-over-10k is the important number for a demo. The tail is much heavier than exponential — one-in-10k already clears 32k, extrapolating suggests one-in-1M clears ~100k. That's cheap search (~25 hours of greedy rollouts on the 4070) compared to the alternative of training a much stronger model.
+
+This framing changed how I think about the agent. **Mean score is what you train for; tail score is what you demo.** They're related but not the same metric, and the right compute budget split between "train longer" vs "sweep seeds" depends on which one you care about.
+
+### Updated results
+
+| Setup | Training steps | Mean (100-ep eval) | Demo-search max (N seeds) |
+|---|---|---|---|
+| Random policy | — | 222 | 1,815 (n=100) |
+| Original writeup (MacBook, MPS) | 2M | 1,434 | 10,002 (n=100) |
+| Tier 1 (RTX 4070, small model) | 500k | 1,133 | 6,046 (n=100) |
+| Tier 2 (RTX 4070, residual) | 2M | **2,495** | **32,147** (n=10,000) |
+| Tier 3 (residual + n-step=3) | 5M | underperformed tier 2 | — |
+
+### What the chain said about next steps
+
+After all the extensions, the honest lever-ranking has shifted:
+
+1. **Seed search scales linearly with compute and produces demo-grade artifacts reliably.** 100k scores are probably 1-in-1M seeds on tier2 — feasible with an overnight run.
+2. **Algorithmic extensions** (C51 distributional, MCTS with value head, PPO) remain the ceiling-raisers but each costs a day+ of engineering and doesn't obviously compound with the next one.
+3. **Longer training of the same recipe** is the lowest-yield lever at this point. Diminishing returns past 2M steps on the same hyperparameters.
+
+The thing I learned most on the extension: *a result that disproves an intuition is worth more than one that confirms it.* n-step failing here, 2-step lookahead failing here, hole_penalty failing here — those each took an evening and each told me something concrete about where the remaining gains aren't.
