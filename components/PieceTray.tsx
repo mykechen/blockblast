@@ -10,6 +10,7 @@ type PieceTrayProps = {
   onDragEnd: (clientX: number, clientY: number) => void;
   draggingIndex: number | null;
   onPointerType?: (isTouch: boolean) => void;
+  suggestedIndex?: number | null;
 };
 
 const TRAY_CELL_SIZE = 28;
@@ -90,6 +91,7 @@ export default function PieceTray({
   onDragEnd,
   draggingIndex,
   onPointerType,
+  suggestedIndex,
 }: PieceTrayProps) {
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
@@ -122,7 +124,18 @@ export default function PieceTray({
   return (
     <div className="flex items-center justify-center gap-4 w-full max-w-[480px] py-4">
       {pieces.map((piece, i) => (
-        <div key={i} className="flex-1 flex items-center justify-center min-h-[100px]">
+        <div
+          key={i}
+          className="flex-1 flex items-center justify-center min-h-[100px] rounded-xl transition-all duration-300"
+          style={{
+            boxShadow: suggestedIndex === i
+              ? '0 0 16px rgba(68,255,136,0.4), inset 0 0 8px rgba(68,255,136,0.1)'
+              : 'none',
+            border: suggestedIndex === i
+              ? '1px solid rgba(68,255,136,0.35)'
+              : '1px solid transparent',
+          }}
+        >
           {piece ? (
             <PiecePreview
               piece={piece}

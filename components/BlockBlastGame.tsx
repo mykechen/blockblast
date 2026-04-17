@@ -44,7 +44,13 @@ export default function BlockBlastGame() {
   const [comboPopups, setComboPopups] = useState<ComboPopup[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [aiPlaying, setAiPlaying] = useState(false);
+  const [mode, setMode] = useState<'play' | 'coach' | 'ai'>('play');
+  const [coachSuggestion, setCoachSuggestion] = useState<{
+    pieceIndex: number;
+    row: number;
+    col: number;
+    explanation: string;
+  } | null>(null);
 
   const boardRectRef = useRef<DOMRect | null>(null);
   const cellSizeRef = useRef(0);
@@ -248,6 +254,7 @@ export default function BlockBlastGame() {
       }
 
       setBoardColors(newColors);
+      setCoachSuggestion(null);
       setGame(newState);
 
       if (newState.isGameOver) {
@@ -282,10 +289,10 @@ export default function BlockBlastGame() {
     [clientToGrid, executePlacement]
   );
 
-  // AI auto-play: fetch move from Python server and execute
+  // AI auto-play mode
   useEffect(() => {
-    if (!aiPlaying || !game || game.isGameOver) {
-      if (aiPlaying && game?.isGameOver) setAiPlaying(false);
+    if (mode !== 'ai' || !game || game.isGameOver) {
+      if (mode === 'ai' && game?.isGameOver) setMode('play');
       return;
     }
 
@@ -294,22 +301,52 @@ export default function BlockBlastGame() {
         const res = await fetch('http://localhost:8000/move', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            board: game.board,
-            pieces: game.currentPieces,
-          }),
+          body: JSON.stringify({ board: game.board, pieces: game.currentPieces }),
         });
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const { pieceIndex, row, col } = await res.json();
         executePlacement(pieceIndex, row, col);
       } catch (err) {
         console.error('AI move failed:', err);
-        setAiPlaying(false);
+        setMode('play');
       }
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [aiPlaying, game, executePlacement]);
+  }, [mode, game, executePlacement]);
+
+  // Coach mode: fetch suggestion without executing
+  useEffect(() => {
+    if (mode !== 'coach' || !game || game.isGameOver) {
+      setCoachSuggestion(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('http://localhost:8000/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ board: game.board, pieces: game.currentPieces }),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setCoachSuggestion({
+            pieceIndex: data.pieceIndex,
+            row: data.row,
+            col: data.col,
+            explanation: data.explanation || '',
+          });
+        }
+      } catch {
+        if (!cancelled) setCoachSuggestion(null);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [mode, game]);
 
   const handleRestart = useCallback(() => {
     setGame(initGame());
@@ -351,7 +388,7 @@ export default function BlockBlastGame() {
     isTouchRef.current = isTouch;
   }, []);
 
-  // Compute ghost position from drag state
+  // Compute ghost position: drag state takes priority, then coach suggestion
   let ghostPiece: Piece | null = null;
   let ghostRow = -100;
   let ghostCol = -100;
@@ -360,6 +397,13 @@ export default function BlockBlastGame() {
     const grid = clientToGrid(dragState.clientX, dragState.clientY, dragState.piece);
     ghostRow = grid.row;
     ghostCol = grid.col;
+  } else if (mode === 'coach' && coachSuggestion && game) {
+    const piece = game.currentPieces[coachSuggestion.pieceIndex];
+    if (piece) {
+      ghostPiece = piece;
+      ghostRow = coachSuggestion.row;
+      ghostCol = coachSuggestion.col;
+    }
   }
 
   if (!game) return null;
@@ -386,6 +430,53 @@ export default function BlockBlastGame() {
         onBoardLayout={handleBoardLayout}
       />
 
+      {/* Coach suggestion card */}
+      {mode === 'coach' && coachSuggestion && !game.isGameOver && (
+        <div
+          className="w-full max-w-[480px] rounded-2xl"
+          style={{
+            padding: '14px 20px',
+            background: 'linear-gradient(135deg, rgba(68,255,136,0.06), rgba(68,136,255,0.06))',
+            border: '1px solid rgba(68,255,136,0.15)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)',
+            animation: 'popIn 0.2s ease-out',
+          }}
+        >
+          <div className="flex items-center gap-2.5" style={{ marginBottom: '6px' }}>
+            <div
+              className="flex items-center justify-center rounded-md font-mono-ui font-bold"
+              style={{
+                width: '28px',
+                height: '28px',
+                fontSize: '11px',
+                letterSpacing: '0.05em',
+                background: 'linear-gradient(135deg, rgba(68,255,136,0.2), rgba(68,200,255,0.2))',
+                border: '1px solid rgba(68,255,136,0.25)',
+                color: 'rgba(68,255,136,0.9)',
+              }}
+            >
+              AI
+            </div>
+            <span
+              className="font-medium"
+              style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px' }}
+            >
+              Suggests piece {coachSuggestion.pieceIndex + 1}
+            </span>
+          </div>
+          <div
+            style={{
+              color: 'rgba(68,255,136,0.8)',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              paddingLeft: '38px',
+            }}
+          >
+            {coachSuggestion.explanation}
+          </div>
+        </div>
+      )}
+
       <PieceTray
         pieces={game.currentPieces}
         onDragStart={handleDragStartWithTouch}
@@ -393,28 +484,71 @@ export default function BlockBlastGame() {
         onDragEnd={handleDragEnd}
         draggingIndex={dragState?.pieceIndex ?? null}
         onPointerType={handlePointerType}
+        suggestedIndex={mode === 'coach' && coachSuggestion ? coachSuggestion.pieceIndex : null}
       />
 
-      {/* Button row */}
-      <div className="flex gap-3 mt-1">
+      {/* Controls row */}
+      <div className="flex items-center gap-4 mt-2 w-full max-w-[480px] justify-center">
+        {/* Mode selector — segmented control */}
+        <div
+          className="flex rounded-full p-1"
+          style={{
+            border: '1px solid var(--chrome-border)',
+            background: 'rgba(255,255,255,0.03)',
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
+          }}
+        >
+          {(['play', 'coach', 'ai'] as const).map((m) => {
+            const isActive = mode === m;
+            const label = m === 'play' ? 'Play' : m === 'coach' ? 'Coach' : 'AI';
+            return (
+              <button
+                key={m}
+                onClick={() => {
+                  if (m !== mode) {
+                    if (m === 'ai' && game?.isGameOver) handleRestart();
+                    setCoachSuggestion(null);
+                    setMode(m);
+                  }
+                }}
+                className="font-mono-ui rounded-full text-[11px] uppercase font-semibold cursor-pointer transition-all duration-200"
+                style={{
+                  padding: '8px 20px',
+                  letterSpacing: '0.12em',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
+                  background: isActive
+                    ? m === 'ai'
+                      ? 'linear-gradient(135deg, rgba(68,136,255,0.35), rgba(136,68,255,0.35))'
+                      : m === 'coach'
+                      ? 'linear-gradient(135deg, rgba(68,255,136,0.3), rgba(68,200,255,0.3))'
+                      : 'rgba(255,255,255,0.1)'
+                    : 'transparent',
+                  boxShadow: isActive
+                    ? '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
+                    : 'none',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* New Game button */}
         <button
           onClick={handleNewGameClick}
-          className="group font-mono-ui flex items-center gap-2.5 px-7 py-3 rounded-full text-[12px] uppercase font-medium cursor-pointer transition-[transform,filter,border-color] duration-150 hover:brightness-125 active:scale-[0.96]"
+          className="group font-mono-ui flex items-center gap-2 rounded-full text-[11px] uppercase font-semibold cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-95"
           style={{
-            letterSpacing: '0.2em',
-            color: 'rgba(255,255,255,0.78)',
+            padding: '9px 18px',
+            letterSpacing: '0.12em',
+            color: 'rgba(255,255,255,0.55)',
             border: '1px solid var(--chrome-border)',
-            background:
-              'linear-gradient(135deg, rgba(79,240,255,0.09), rgba(255,46,106,0.09))',
-            backgroundSize: '200% 200%',
-            animation: 'sheen 6s ease-in-out infinite',
-            boxShadow:
-              'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.35)',
+            background: 'rgba(255,255,255,0.03)',
           }}
         >
           <svg
-            width="14"
-            height="14"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -426,52 +560,7 @@ export default function BlockBlastGame() {
             <path d="M21 12a9 9 0 1 1-3.1-6.8" />
             <path d="M21 4v5h-5" />
           </svg>
-          <span>New Game</span>
-        </button>
-
-        <button
-          onClick={() => {
-            if (aiPlaying) {
-              setAiPlaying(false);
-            } else {
-              if (game?.isGameOver) handleRestart();
-              setAiPlaying(true);
-            }
-          }}
-          className="group font-mono-ui flex items-center gap-2.5 px-7 py-3 rounded-full text-[12px] uppercase font-medium cursor-pointer transition-[transform,filter,border-color] duration-150 hover:brightness-125 active:scale-[0.96]"
-          style={{
-            letterSpacing: '0.2em',
-            color: aiPlaying ? '#ff4466' : 'rgba(255,255,255,0.78)',
-            border: `1px solid ${aiPlaying ? 'rgba(255,68,102,0.4)' : 'var(--chrome-border)'}`,
-            background: aiPlaying
-              ? 'linear-gradient(135deg, rgba(255,68,102,0.15), rgba(255,46,106,0.15))'
-              : 'linear-gradient(135deg, rgba(68,255,136,0.09), rgba(68,136,255,0.09))',
-            backgroundSize: '200% 200%',
-            animation: 'sheen 6s ease-in-out infinite',
-            boxShadow:
-              'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.35)',
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            {aiPlaying ? (
-              <>
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </>
-            ) : (
-              <polygon points="5,3 19,12 5,21" />
-            )}
-          </svg>
-          <span>{aiPlaying ? 'Stop AI' : 'AI Play'}</span>
+          <span>New</span>
         </button>
       </div>
 

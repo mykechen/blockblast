@@ -44,6 +44,7 @@ class MoveResponse(BaseModel):
     row: int
     col: int
     action: int
+    explanation: str
 
 
 def build_observation(board: list[list[bool]], pieces: list[PieceData | None]) -> np.ndarray:
@@ -93,6 +94,86 @@ def build_action_mask(board: list[list[bool]], pieces: list[PieceData | None]) -
     return mask
 
 
+def count_holes(board: np.ndarray) -> int:
+    holes = 0
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r, c]:
+                continue
+            filled = 0
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if nr < 0 or nr >= BOARD_SIZE or nc < 0 or nc >= BOARD_SIZE:
+                    filled += 1
+                elif board[nr, nc]:
+                    filled += 1
+            if filled >= 3:
+                holes += 1
+    return holes
+
+
+def find_completed_lines(board: np.ndarray) -> tuple[list[int], list[int]]:
+    rows = [r for r in range(BOARD_SIZE) if board[r].all()]
+    cols = [c for c in range(BOARD_SIZE) if board[:, c].all()]
+    return rows, cols
+
+
+def generate_explanation(
+    board: list[list[bool]], piece: PieceData, row: int, col: int,
+) -> str:
+    board_arr = np.array(board, dtype=bool)
+    shape_arr = np.array(piece.shape, dtype=bool)
+    ph, pw = shape_arr.shape
+
+    new_board = board_arr.copy()
+    for r in range(ph):
+        for c in range(pw):
+            if shape_arr[r, c]:
+                new_board[row + r, col + c] = True
+
+    cleared_rows, cleared_cols = find_completed_lines(new_board)
+    lines_cleared = len(cleared_rows) + len(cleared_cols)
+
+    for r in cleared_rows:
+        new_board[r, :] = False
+    for c in cleared_cols:
+        new_board[:, c] = False
+
+    holes_before = count_holes(board_arr)
+    holes_after = count_holes(new_board)
+    holes_delta = holes_after - holes_before
+
+    occupied_before = int(board_arr.sum())
+    occupied_after = int(new_board.sum())
+
+    reasons = []
+    if lines_cleared > 0:
+        cells = lines_cleared * BOARD_SIZE
+        reasons.append(f"Clears {lines_cleared} line{'s' if lines_cleared > 1 else ''} ({cells} cells)")
+    if holes_delta < 0:
+        reasons.append(f"Removes {-holes_delta} hole{'s' if -holes_delta > 1 else ''}")
+    elif holes_delta == 0 and holes_before > 0:
+        reasons.append("No new holes created")
+    if lines_cleared == 0:
+        near = []
+        for r in range(BOARD_SIZE):
+            filled = int(new_board[r].sum())
+            if 6 <= filled < BOARD_SIZE:
+                near.append(f"row {r+1} ({filled}/8)")
+        for c in range(BOARD_SIZE):
+            filled = int(new_board[:, c].sum())
+            if 6 <= filled < BOARD_SIZE:
+                near.append(f"col {c+1} ({filled}/8)")
+        if near:
+            reasons.append(f"Sets up {near[0]}")
+    if occupied_after < occupied_before:
+        reasons.append(f"Frees {occupied_before - occupied_after} cells")
+    if not reasons:
+        reasons.append("Best available placement")
+
+    return " · ".join(reasons[:2])
+
+
 def create_app(checkpoint: str, config_path: str) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
@@ -120,7 +201,7 @@ def create_app(checkpoint: str, config_path: str) -> FastAPI:
         mask = build_action_mask(req.board, req.pieces)
 
         if not mask.any():
-            return MoveResponse(pieceIndex=0, row=0, col=0, action=0)
+            return MoveResponse(pieceIndex=0, row=0, col=0, action=0, explanation="No valid moves")
 
         state_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
         with torch.no_grad():
@@ -129,7 +210,10 @@ def create_app(checkpoint: str, config_path: str) -> FastAPI:
         piece_idx = action // 64
         row = (action % 64) // 8
         col = action % 8
-        return MoveResponse(pieceIndex=piece_idx, row=row, col=col, action=action)
+
+        piece = req.pieces[piece_idx]
+        explanation = generate_explanation(req.board, piece, row, col) if piece else "No piece"
+        return MoveResponse(pieceIndex=piece_idx, row=row, col=col, action=action, explanation=explanation)
 
     @app.get("/health")
     def health():
